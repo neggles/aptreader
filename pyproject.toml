@@ -8,8 +8,9 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.123.3",
+    "httpx>=0.28.1",
     "pydantic>=2.12.5",
+    "python-debian>=1.0.1",
     "reflex>=0.8.21",
     "typer>=0.20.0",
 ]
