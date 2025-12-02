@@ -62,14 +62,14 @@ def index() -> rx.Component:
                     rx.vstack(
                         rx.foreach(
                             AppState.repository.releases,
-                            lambda release_name, _: rx.box(
-                                rx.heading(f"Release: {release_name}", size="4"),
+                            lambda release_item: rx.box(
+                                rx.heading(f"Release: {release_item[0]}", size="4"),
                                 rx.text(
-                                    f"Components: {', '.join(AppState.repository.releases[release_name].components.keys())}",
+                                    f"Codename: {release_item[1].codename}",
                                     color="gray",
                                 ),
                                 rx.text(
-                                    f"Total packages: {sum(len(comp.packages) for comp in AppState.repository.releases[release_name].components.values())}",
+                                    f"Suite: {release_item[1].suite}",
                                     color="gray",
                                 ),
                                 padding="1em",
