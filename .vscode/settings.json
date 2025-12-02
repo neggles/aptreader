@@ -1,3 +1,25 @@
 {
-    "python.analysis.typeCheckingMode": "basic"
+    "editor.formatOnSave": true,
+
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.ruff_cache": true,
+        "**/__pycache__": true
+    },
+
+    "[python]": {
+        "diffEditor.ignoreTrimWhitespace": false,
+        "editor.defaultColorDecorators": "never",
+        "gitlens.codeLens.symbolScopes": ["!Module"],
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        },
+        "editor.formatOnType": true,
+        "editor.wordBasedSuggestions": "off"
+    }
 }
