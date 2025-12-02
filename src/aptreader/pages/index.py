@@ -3,8 +3,10 @@
 import reflex as rx
 
 from ..state import AppState
+from ..templates import template
 
 
+@template(route="/")
 def index() -> rx.Component:
     """Main page component."""
     return rx.container(
