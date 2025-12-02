@@ -29,17 +29,17 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 ## Project Structure
 
 ```
-src/aptreader/          # Main application package (FastAPI backend)
+src/aptreader/          # Main application package
 ├── __init__.py
-└── app.py              # Entry point with main() function
-frontend/               # Vite-based frontend (to be added)
+└── app.py              # Entry point with main() function and Reflex app
 ```
 
 ## Key Conventions
 
 ### Entry Point
-The console script `aptreader` is defined in `pyproject.toml` and maps to `aptreader.app:app`.
+The console script `aptreader` is defined in `pyproject.toml` and maps to `aptreader.app:main`.
 CLI functionality should be implemented using **Typer** through this entry point.
+The Reflex app should be initialized in `aptreader.app` and runnable via the CLI.
 
 ### Dependencies
 - Runtime dependencies go in `[project.dependencies]`
@@ -53,21 +53,19 @@ CLI functionality should be implemented using **Typer** through this entry point
 
 ## Architecture
 
+### Web Framework: Reflex
+The application is built with **Reflex** (https://reflex.dev), a pure-Python full-stack framework that handles both backend logic and frontend UI.
+
+- **Backend logic**: Repository downloading, parsing, caching, and data management in Python
+- **Frontend UI**: Reflex components for interactive web interface (compiles to React but written in Python)
+- **State management**: Reflex's built-in state system for reactive UI updates
+- **No separate Node.js required**: Reflex handles all frontend compilation
+
 ### CLI: Typer
-Command-line interface built with Typer for repository management and server control.
-
-### Backend: FastAPI
-The web API will be built with FastAPI. The backend handles:
-- Downloading APT repository metadata to local per-repo directories
-- Parsing repository files using Python libraries (APT itself is Python-based)
-- Serving parsed data via REST API
-- Dependency tree analysis and repository structure navigation
-
-### Frontend: Vite
-A separate Vite-based frontend will provide the UI for:
-- Repository browsing and navigation
-- Package detail views
-- Dependency visualization
+Command-line interface built with Typer for:
+- Starting/stopping the Reflex web server
+- Repository management operations
+- Configuration and setup tasks
 
 ### APT Repository Handling
 - **Local caching**: Each repository's metadata is downloaded to a per-repo directory
@@ -76,8 +74,8 @@ A separate Vite-based frontend will provide the UI for:
 - **Metadata files**: Handle Packages files, Release files, and InRelease signatures
 
 ### Data Flow
-1. User provides APT repository URL (e.g., `http://archive.ubuntu.com/ubuntu`)
-2. Backend downloads and caches metadata files locally
+1. User provides APT repository URL via Reflex UI
+2. Backend logic downloads and caches metadata files locally
 3. Python APT libraries parse the Debian control file format
-4. FastAPI serves structured data to frontend
-5. Frontend displays repository tree, package details, and dependency graphs
+4. Reflex state updates trigger reactive UI changes
+5. Reflex components display repository tree, package details, and dependency graphs
