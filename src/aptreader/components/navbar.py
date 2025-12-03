@@ -108,9 +108,7 @@ def menu_button() -> rx.Component:
 
     ordered_page_routes = [
         "/",
-        "/table",
-        "/about",
-        "/profile",
+        "/repository",
         "/settings",
     ]
 

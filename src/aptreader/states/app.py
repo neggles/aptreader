@@ -24,6 +24,8 @@ class AppState(rx.State):
     @rx.event
     async def on_load(self):
         settings = await self.get_state(SettingsState)
+        if settings.cache_dir:
+            settings.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def set_repo_url(self, url: str):
         """Update the repository URL."""

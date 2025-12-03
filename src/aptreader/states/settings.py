@@ -14,6 +14,15 @@ class SettingsState(rx.State):
     message: str | None = None
 
     @rx.event
+    def on_load(self):
+        pass
+
+    @rx.var
+    def get_cache_dir(self) -> str:
+        """Get the current cache directory as a string."""
+        return str(self.cache_dir) if self.cache_dir else ""
+
+    @rx.event
     def set_cache_dir(self, value: str):
         """Update the cache directory path."""
         self.cache_dir = Path(value) if value else None
@@ -23,11 +32,6 @@ class SettingsState(rx.State):
     def save_settings(self):
         """Save settings and provide feedback."""
         self.message = "Settings saved."
-
-    @rx.var
-    def get_cache_dir(self) -> str:
-        """Get the current cache directory as a string."""
-        return str(self.cache_dir) if self.cache_dir else ""
 
     @rx.var
     def get_message(self) -> str | None:

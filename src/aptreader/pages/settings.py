@@ -4,7 +4,7 @@ from aptreader.states.settings import SettingsState
 from aptreader.templates import template
 
 
-@template(route="/settings")
+@template(route="/settings", on_load=SettingsState.on_load)
 def settings() -> rx.Component:
     """Settings panel for configuring cache directory and other options."""
     return rx.vstack(
