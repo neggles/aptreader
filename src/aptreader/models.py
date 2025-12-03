@@ -1,11 +1,10 @@
 """Data models for APT repository structures."""
 
-from pydantic import Field
+from pydantic import Field, BaseModel
 from pydantic.dataclasses import dataclass
 
 
-@dataclass
-class Package:
+class Package(BaseModel):
     """Represents a package in an APT repository."""
 
     name: str
@@ -25,16 +24,14 @@ class Package:
     homepage: str | None = None
 
 
-@dataclass
-class Component:
+class Component(BaseModel):
     """Represents a component (e.g., main, universe) in a distribution."""
 
     name: str
     packages: dict[str, Package] = Field(default_factory=dict)
 
 
-@dataclass
-class Release:
+class Release(BaseModel):
     """Represents a release/distribution (e.g., jammy, focal) in an APT repository."""
 
     name: str
@@ -45,8 +42,7 @@ class Release:
     components: dict[str, Component] = Field(default_factory=dict)
 
 
-@dataclass
-class Repository:
+class Repository(BaseModel):
     """Represents an APT repository."""
 
     url: str
