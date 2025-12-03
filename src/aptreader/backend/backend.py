@@ -1,16 +1,19 @@
+import logging
+import re
 from datetime import UTC, datetime
 from importlib.metadata import distribution
 from pathlib import Path
 from typing import Annotated, ClassVar, Sequence
 
 import reflex as rx
-import sqlalchemy as sa
 import sqlmodel as sm
 from pydantic import computed_field
 from sqlalchemy.orm.session import object_session
 from sqlmodel import JSON, DateTime, Field, Relationship, func, select
 
 from ..fetcher import discover_distributions, fetch_distributions
+
+logger = logging.getLogger(__name__)
 
 
 class Distribution(rx.Model, table=True):
@@ -269,7 +272,7 @@ class State(rx.State):
                 self.fetch_progress = f"Saving {len(results)} distributions to database..."
             yield
 
-            await self.replace_repository_distributions(repo_id, results)
+            self.replace_repository_distributions(repo_id, results)
 
             # Reload repositories to show updated timestamp
             async with self:
@@ -277,7 +280,8 @@ class State(rx.State):
             yield rx.toast.success(f"Successfully fetched {len(results)} distributions for {repo_name}")
 
         except Exception as e:
-            yield rx.toast.error(f"Error fetching distributions: {str(e)}")
+            logger.exception("Error fetching distributions:")
+            yield rx.toast.error(f"Error fetching distributions: {e}")
         finally:
             async with self:
                 self.is_fetching = False
@@ -285,8 +289,10 @@ class State(rx.State):
             yield
 
     @rx.event
-    async def replace_repository_distributions(
-        self, repo_id: int, distributions: list[tuple[str, Path, dict]]
+    def replace_repository_distributions(
+        self,
+        repo_id: int,
+        distributions: list[tuple[str, Path, dict]],
     ):
         """Update the distributions for a repository.
 
@@ -298,8 +304,7 @@ class State(rx.State):
         with rx.session() as session:
             repo = session.get(Repository, repo_id, populate_existing=True, with_for_update=True)
             if not repo:
-                yield rx.toast.error("Repository not found in database during save.")
-                return
+                return rx.toast.error("Repository not found in database during save.")
             try:
                 # Delete existing distributions for this repo
                 for dist in repo.distributions:
@@ -325,11 +330,11 @@ class State(rx.State):
                     )
                     session.add(dist)
 
-                # Update repository timestamp
-                session.add(repo)
+                session.flush()
                 session.commit()
-            except Exception as e:
-                yield rx.window_alert(f"Error saving distributions to database: {e}")
-                return
+                session.refresh(repo)
+                return rx.toast.success(f"Distributions saved for repository '{repo.name}'")
 
-        yield rx.toast.success(f"Distributions updated for repository '{repo.name}'")
+            except Exception as e:
+                logger.exception("Error fetching distributions:")
+                return rx.toast.error(f"Error saving distributions to database: {e}")

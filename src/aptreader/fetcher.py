@@ -197,7 +197,7 @@ async def discover_distributions(repo_url: str) -> list[str]:
 async def fetch_distributions(
     repo_url: str,
     distributions: list[str] | None = None,
-) -> AsyncGenerator[tuple[str, Path, dict], None]:
+):
     """Discover and fetch Release files for all distributions at a repository.
 
     Args:

@@ -61,7 +61,7 @@ def load_distributions(state: State, repo_id: int | str):
         state.distributions = list(distributions)
 
 
-def distributions_table(repo_id: int | str | None = None) -> rx.Component:
+def distributions_table() -> rx.Component:
     """Display table of distributions."""
     return rx.fragment(
         rx.cond(
@@ -143,11 +143,12 @@ def distributions() -> rx.Component:
     # Get repo_id from router
     repo_id = rx.State.repo_id  # type: ignore
 
+    State.set_current_repo(repo_id)
+
     return rx.vstack(
         rx.heading(f"Distributions for {repo_id}", size="8"),
-        distributions_table(repo_id),
+        distributions_table(),
         size="4",
         width="100%",
         padding="0",
-        on_mount=load_distributions(repo_id),
     )
