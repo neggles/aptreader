@@ -29,17 +29,22 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 ## Project Structure
 
 ```
-src/aptreader/          # Main application package
+src/aptreader/              # Main application package
 ├── __init__.py
-└── app.py              # Entry point with main() function and Reflex app
+├── aptreader.py            # Main Reflex app and Typer CLI entry point
+├── state.py                # Application state (Reflex State class)
+├── models.py               # Data models (Pydantic dataclasses)
+├── repository.py           # Repository download/parsing logic
+├── pages/
+│   └── index.py            # Main page component (Reflex)
+├── templates/              # App-wide layout and theming (if present)
 ```
 
 ## Key Conventions
 
 ### Entry Point
-The console script `aptreader` is defined in `pyproject.toml` and maps to `aptreader.app:main`.
-CLI functionality should be implemented using **Typer** through this entry point.
-The Reflex app should be initialized in `aptreader.app` and runnable via the CLI.
+The console script `aptreader` is defined in `pyproject.toml` and maps to `aptreader.aptreader:main`.
+The Reflex app is initialized in `aptreader.py` and runnable via `reflex run`.
 
 ### Dependencies
 - Runtime dependencies go in `[project.dependencies]`
@@ -54,28 +59,24 @@ The Reflex app should be initialized in `aptreader.app` and runnable via the CLI
 ## Architecture
 
 ### Web Framework: Reflex
-The application is built with **Reflex** (https://reflex.dev), a pure-Python full-stack framework that handles both backend logic and frontend UI.
+The application is built with **Reflex** (https://reflex.dev), a pure-Python full-stack framework for both backend logic and frontend UI.
 
-- **Backend logic**: Repository downloading, parsing, caching, and data management in Python
-- **Frontend UI**: Reflex components for interactive web interface (compiles to React but written in Python)
-- **State management**: Reflex's built-in state system for reactive UI updates
-- **No separate Node.js required**: Reflex handles all frontend compilation
-
-### CLI: Typer
-Command-line interface built with Typer for:
-- Starting/stopping the Reflex web server
-- Repository management operations
-- Configuration and setup tasks
+- **Main app**: `aptreader.py` defines the Reflex app
+- **State management**: `state.py` contains the Reflex State class for all app state
+- **Pages**: UI components and pages are organized under `pages/` (e.g., `pages/index.py`)
+- **Repository logic**: Downloading, parsing, and caching handled in `repository.py` using `httpx` and `python-debian`
+- **Models**: Data models defined in `models.py` using Pydantic dataclasses
+- **No Node.js required**: Reflex compiles frontend automatically
 
 ### APT Repository Handling
-- **Local caching**: Each repository's metadata is downloaded to a per-repo directory
-- **Parser libraries**: Use existing Python APT parsing libraries (e.g., `python-apt`, `python-debian`) rather than implementing custom parsers
-- **Repository structure**: Support standard APT repository layouts with releases, components, and architectures
-- **Metadata files**: Handle Packages files, Release files, and InRelease signatures
+* **Local caching**: Each repository's metadata is downloaded to a per-repo directory in `<repo_root>/.cache/aptreader/`
+* **Parser libraries**: Uses `python-debian` for parsing Debian control files
+* **Repository structure**: Supports standard APT repository layouts with releases, components, and architectures
+* **Metadata files**: Handles Packages files, Release files, and InRelease signatures
 
 ### Data Flow
 1. User provides APT repository URL via Reflex UI
-2. Backend logic downloads and caches metadata files locally
-3. Python APT libraries parse the Debian control file format
-4. Reflex state updates trigger reactive UI changes
+2. RepositoryManager downloads and caches metadata files locally
+3. `python-debian` parses the Debian control file format
+4. Reflex State updates trigger reactive UI changes
 5. Reflex components display repository tree, package details, and dependency graphs
