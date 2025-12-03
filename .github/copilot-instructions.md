@@ -8,26 +8,25 @@ aptreader is a Reflex web application for downloading, parsing, and browsing APT
 
 ### Database Models & APT Repository Integration
 
-**Current State**: The app currently uses SQLModel database models to store repository and distribution metadata:
+The app uses SQLModel database models to store repository and distribution metadata:
 
 1. **Database Models** (`backend/backend.py`):
-
     - `Repository(rx.Model)`: Stores repo URL, name, update timestamp
-    - `Distribution(rx.Model)`: Stores release metadata (codename, suite, architectures, components)
+    - `Distribution(rx.Model)`: Stores release metadata (codename, suite, architectures, components, raw Release file text)
     - Foreign key relationship: `Distribution.repository_id -> Repository.id` with cascade delete
     - Uses SQLite via `rx.session()` context managers
 
-2. **Legacy Code** (partially unused):
+2. **Repository Fetching** (`fetcher.py`):
+    - `discover_distributions()`: Probes common distribution names at a repo URL
+    - `fetch_release_file()`: Downloads and parses individual Release files
+    - `fetch_distributions()`: Main function - discovers and fetches all distributions
+    - Files cached at `REPOS_DIR/{domain}/{path}` mirroring source structure
+    - Progress callbacks for UI feedback during long operations
+
+3. **Legacy Code** (ignore these):
     - `models/package.py`: Pydantic models from earlier iteration (not yet integrated)
     - `repository.py`: Old RepositoryManager implementation (not currently used)
-    - `temp/oldfiles/`: Previous attempt code (ignore this)
-
-**Next Development Phase**: Implement actual APT repository fetching using python-debian:
-
--   See `temp/deb822_test.py` for working example of parsing Release files with `debian.deb822`
--   Goal: Iterate through distributions at a repo URL and populate `Distribution` table
--   Will download Release files from `{repo_url}/dists/{distribution}/Release`
--   Parse using `deb822.Release()` and extract metadata (origin, suite, codename, architectures, components)
+    - `temp/oldfiles/`: Previous attempt code
 
 ### State Management with Reflex
 
@@ -78,13 +77,13 @@ reflex db migrate                       # Apply migrations
 -   Config in `alembic.ini` (timezone set to UTC)
 -   DB URL configured in `rxconfig.py` via `APTREADER_DB_URL` env var (default: `sqlite:///aptreader.db`)
 
-### Cache Directory Configuration
+### Cache Directory Structure
 
-Repository metadata is cached in `data/` by default. To configure:
-
--   Set `APTREADER_CACHE_DIR` environment variable to override default
--   Default: `data/` subdirectory in project root
--   `RepositoryManager` handles cache structure (per-repo subdirectories with URL hashes)
+Repository metadata is cached in `data/repos/` (configurable via `APTREADER_DATA_DIR` env var):
+- Path structure mirrors source: `data/repos/{domain}/{path}/dists/{dist}/Release`
+- Example: `https://archive.kylinos.cn/dists/10.0/Release` → `data/repos/archive.kylinos.cn/dists/10.0/Release`
+- See `constants.REPOS_DIR` and `fetcher.url_to_local_path()` for path conversion
+- Files are downloaded once and reused; re-fetching a repo replaces existing distributions in DB
 
 ### Code Quality
 
@@ -109,16 +108,42 @@ ruff format .      # Auto-format code
     - Forms call State event handlers (`add_repository_to_db`, `update_repository_in_db`)
 
 2. **Table Views**:
-
     - `show_repository()` function renders table rows with `rx.table.row/cell`
-    - Actions column contains edit/delete icon buttons
+    - Actions column contains: view distributions (list icon), fetch distributions (download icon), edit, delete
+    - Green download button triggers `State.fetch_repository_distributions()` with loading indicator
     - Sort/filter/search controls in `rx.flex` above table
     - Table uses `on_mount=State.load_entries` to load data on page load
+
+3. **Progress Indicators**: Long-running async operations must show feedback
+    - `State.is_fetching` + `State.fetch_progress`: Boolean flag and progress message
+    - Display with `rx.callout` containing `rx.spinner` and progress text
+    - Update progress via callback passed to async functions
+    - Example in `views/repositories.py` for distribution fetching
 
 3. **Event Handler Pattern**:
     ```python
     on_click=lambda: State.delete_repository(repo.id)  # Pass params via lambda
     on_click=State.toggle_sort  # No-param handlers called directly
+
+    # For conditional handlers (when param might be None)
+    on_click=State.handler(repo.id) if repo.id else rx.noop
+    ```
+
+4. **Async Generators for Progress**: Use `yield` for incremental UI updates in long operations
+    ```python
+    @rx.event
+    async def long_operation(self):
+        self.is_loading = True
+        self.progress = "Step 1..."
+        yield  # Updates UI
+
+        await some_async_work()
+
+        self.progress = "Step 2..."
+        yield  # Updates UI again
+
+        self.is_loading = False
+        yield rx.toast.success("Done!")  # Final update
     ```
 
 ### Styling System
@@ -158,16 +183,20 @@ release_data = deb822.Release(release_text)
 
 ```
 src/aptreader/
-├── backend/backend.py       # State + SQLModel database models
-├── models/package.py        # Pydantic domain models (Package)
-├── repository.py            # APT repo downloading/parsing (unused in UI)
+├── backend/backend.py       # State + SQLModel database models + fetch logic
+├── fetcher.py               # APT repo discovery and Release file downloading
+├── constants.py             # DATA_DIR, REPOS_DIR, DB_URL configuration
+├── models/package.py        # Legacy Pydantic models (not integrated)
+├── repository.py            # Legacy RepositoryManager (unused)
 ├── templates/template.py    # Page wrapper decorator + ThemeState
 ├── components/              # Reusable UI components
 │   ├── sidebar.py          # Navigation sidebar
 │   ├── form_field.py       # Standardized form inputs
 │   └── logo.py             # App logo component
 ├── views/repositories.py    # Repository table + CRUD dialogs
-└── pages/index.py          # Main page entry point
+└── pages/
+    ├── index.py            # Main repositories page
+    └── distributions.py    # Distribution listing page (dynamic route)
 ```
 
 ## Dependencies & Setup
@@ -195,9 +224,32 @@ reflex run        # Start development server
 2. **Session context**: Always use `with rx.session() as session:` for database operations
 3. **Lambda bindings**: Event handlers with parameters need lambda wrappers: `on_click=lambda: handler(arg)`
 4. **Async event handlers**: State methods can be async when downloading/parsing repo data:
-    ```python
-    @rx.event
-    async def fetch_distributions(self, repo_id: int) -> rx.event.EventSpec:
+   ```python
+   @rx.event
+   async def fetch_distributions(self, repo_id: int):
+       async with httpx.AsyncClient() as client:
+           # Download and parse Release files
+       with rx.session() as session:
+           # Save to database
+       yield rx.toast.success("Distributions loaded")
+   ```
+5. **Progress feedback required**: Never start long-running operations without UI feedback - use loading states and progress messages
+6. **Ignore temp directories**: `temp/oldfiles/` contains abandoned code from previous iterations
+
+## Current Development Status
+
+**Completed Features**:
+- Repository CRUD operations with database persistence
+- Distribution discovery via probing common codenames (Ubuntu, Debian)
+- Release file downloading and parsing with python-debian
+- Progress indicators for async operations
+- Distributions page to view fetched distributions
+
+**Next Features** (not yet implemented):
+- Download package lists (Packages.gz files) for distributions/components
+- Parse and display individual packages
+- Package search and filtering
+- Download actual .deb package files
         async with httpx.AsyncClient() as client:
             # Download and parse Release files
         with rx.session() as session:

@@ -6,6 +6,10 @@ from pathlib import Path
 DATA_DIR = Path(getenv("APTREADER_DATA_DIR", "data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# repository metadata cache directory
+REPOS_DIR = DATA_DIR / "repos"
+REPOS_DIR.mkdir(parents=True, exist_ok=True)
+
 # set database url
 if DATA_DIR.is_relative_to(Path.cwd()):
     DB_URL = f"sqlite:///{DATA_DIR.relative_to(Path.cwd()) / 'aptreader.db'}"

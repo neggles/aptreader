@@ -1,16 +1,50 @@
-import reflex as rx
+from unittest import result
 
-from ..backend.backend import Repository, State
+import reflex as rx
+from sqlmodel import func, select
+
+from ..backend.backend import Distribution, Repository, State
 from ..components.form_field import form_field
 
 
 def show_repository(repo: Repository):
+    if repo.id is None:
+        return rx.fragment()
+
     return rx.table.row(
+        rx.table.cell(repo.id),
         rx.table.cell(repo.name),
         rx.table.cell(repo.url),
         rx.table.cell(repo.update_ts),
+        rx.table.cell(repo.distribution_count),
         rx.table.cell(
             rx.hstack(
+                rx.cond(
+                    repo.id is not None,
+                    rx.link(
+                        rx.icon_button(
+                            rx.icon("list", size=22),
+                            size="2",
+                            variant="soft",
+                            color_scheme="blue",
+                        ),
+                        href=f"/distributions/{repo.id}",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.cond(
+                    repo.id is not None,
+                    rx.icon_button(
+                        rx.icon("download", size=22),
+                        on_click=State.fetch_repository_distributions(repo.id),
+                        size="2",
+                        variant="solid",
+                        color_scheme="green",
+                        loading=State.is_fetching,
+                        disabled=State.is_fetching,
+                    ),
+                    rx.fragment(),
+                ),
                 update_repository_dialog(repo),
                 rx.icon_button(
                     rx.icon("trash-2", size=22),
@@ -20,6 +54,7 @@ def show_repository(repo: Repository):
                     color_scheme="red",
                 ),
                 align="end",
+                spacing="2",
             )
         ),
         style={"_hover": {"bg": rx.color("gray", 3)}},
@@ -207,6 +242,22 @@ def _header_cell(text: str, icon: str, max_width: str | None = None) -> rx.Compo
 
 def repositories_table():
     return rx.fragment(
+        # Progress indicator for distribution fetching
+        rx.cond(
+            State.is_fetching,
+            rx.callout(
+                rx.hstack(
+                    rx.spinner(size="2"),
+                    rx.text(State.fetch_progress, size="3"),
+                    spacing="3",
+                    align="center",
+                ),
+                color_scheme="blue",
+                size="2",
+                margin_bottom="1em",
+            ),
+            rx.fragment(),
+        ),
         rx.flex(
             add_repository_button(),
             rx.spacer(),
@@ -261,9 +312,11 @@ def repositories_table():
         rx.table.root(
             rx.table.header(
                 rx.table.row(
+                    _header_cell("ID", "hash", max_width="60px"),
                     _header_cell("Name", "user"),
                     _header_cell("URL", "link-2"),
                     _header_cell("Last Updated", "calendar"),
+                    _header_cell("Distributions", "layers", max_width="140px"),
                     _header_cell("Actions", "cog", max_width="100px"),
                 ),
             ),
