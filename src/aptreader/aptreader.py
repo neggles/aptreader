@@ -6,5 +6,5 @@ from aptreader.pages import *  # noqa: F403
 
 # Create the Reflex app
 app = rx.App(
-    theme=rx.theme(radius="full", accent_color="violet"),
+    theme=rx.theme(appearance="dark", has_background=True, radius="full", accent_color="violet"),
 )
