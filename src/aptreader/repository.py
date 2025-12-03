@@ -2,6 +2,7 @@
 
 import gzip
 import hashlib
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -9,6 +10,32 @@ import httpx
 from debian import deb822
 
 from aptreader.models import Component, Package, Release, Repository
+
+
+class _DirectoryListingParser(HTMLParser):
+    """Extract directory names from a simple HTML index."""
+
+    def __init__(self):
+        super().__init__()
+        self._entries: list[str] = []
+
+    def handle_starttag(self, tag, attrs):  # noqa: D401 - HTMLParser hook
+        if tag.lower() != "a":
+            return
+        href = dict(attrs).get("href", "")
+        if not href or href.startswith("?"):
+            return
+        if href in {"../", "/"}:
+            return
+        if not href.endswith("/"):
+            return
+        name = href.strip("/")
+        if name and name not in self._entries:
+            self._entries.append(name)
+
+    def get_entries(self) -> list[str]:
+        """Return discovered directory names preserving server order."""
+        return list(self._entries)
 
 
 class RepositoryManager:
@@ -53,6 +80,105 @@ class RepositoryManager:
             response = await client.get(url)
             response.raise_for_status()
             output_path.write_bytes(response.content)
+
+    async def _discover_distributions(self, repo_url: str) -> list[str]:
+        """Return distribution names exposed under repo_url/dists/."""
+        listing_url = urljoin(repo_url, "dists/")
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(listing_url)
+            response.raise_for_status()
+
+        parser = _DirectoryListingParser()
+        parser.feed(response.text)
+        entries = parser.get_entries()
+
+        if not entries:
+            candidates: list[str] = []
+            for line in response.text.splitlines():
+                token = line.strip()
+                if not token or token.startswith(".."):
+                    continue
+                if token.endswith("/"):
+                    candidates.append(token.strip("/"))
+            if candidates:
+                entries = list(dict.fromkeys(candidates))
+
+        if not entries:
+            raise ValueError(f"No distributions found at {listing_url}")
+
+        return entries
+
+    async def _load_release(
+        self,
+        repo_url: str,
+        dist_name: str,
+        component_filter: list[str] | None,
+        cache_dir: Path,
+    ) -> Release:
+        """Download release metadata and packages for a single distribution."""
+
+        dist_name = dist_name.strip().strip("/")
+        dist_path = f"dists/{dist_name}"
+        release_url = urljoin(repo_url, f"{dist_path}/Release")
+        release_path = cache_dir / f"{dist_path.replace('/', '_')}_Release"
+
+        try:
+            await self._download_file(release_url, release_path)
+        except httpx.HTTPError as e:
+            raise ValueError(f"Failed to download Release file from {release_url}") from e
+
+        release_content = release_path.read_text(encoding="utf-8")
+        release_data = next(deb822.Release.iter_paragraphs(release_content))
+
+        release = Release(
+            name=dist_name,
+            codename=release_data.get("Codename"),
+            suite=release_data.get("Suite"),
+            version=release_data.get("Version"),
+            architectures=release_data.get("Architectures", "").split(),
+        )
+
+        declared_components = release_data.get("Components", "").split()
+        if component_filter:
+            filter_set = list(dict.fromkeys(component_filter))
+            target_components = [comp for comp in declared_components if comp in filter_set]
+            if not target_components:
+                target_components = filter_set
+        else:
+            target_components = declared_components or ["main"]
+
+        for comp_name in target_components:
+            component = Component(name=comp_name)
+
+            for arch in release.architectures:
+                if not arch or arch in {"all", "source"}:
+                    continue
+
+                packages_url = urljoin(repo_url, f"{dist_path}/{comp_name}/binary-{arch}/Packages.gz")
+                packages_path = (
+                    cache_dir / f"{dist_path.replace('/', '_')}{comp_name}_binary-{arch}_Packages.gz"
+                )
+
+                try:
+                    await self._download_file(packages_url, packages_path)
+                    packages = self._parse_packages_file(packages_path)
+                    component.packages.update(packages)
+                except httpx.HTTPError:
+                    packages_url = urljoin(repo_url, f"{dist_path}/{comp_name}/binary-{arch}/Packages")
+                    packages_path = (
+                        cache_dir / f"{dist_path.replace('/', '_')}{comp_name}_binary-{arch}_Packages"
+                    )
+                    try:
+                        await self._download_file(packages_url, packages_path)
+                        packages = self._parse_packages_file(packages_path)
+                        component.packages.update(packages)
+                    except httpx.HTTPError:
+                        continue
+
+            if component.packages:
+                release.components[comp_name] = component
+
+        return release
 
     def _parse_packages_file(self, packages_path: Path) -> dict[str, Package]:
         """Parse a Packages file into Package objects.
@@ -113,14 +239,14 @@ class RepositoryManager:
         return packages
 
     async def load_repository(
-        self, repo_url: str, dist: str = "dists/", components: list[str] | None = None
+        self, repo_url: str, dists: list[str] | None = None, components: list[str] | None = None
     ) -> Repository:
         """Load and parse an APT repository.
 
         Args:
             repo_url: The base URL of the APT repository
-            dist: The distribution path (e.g., 'jammy' or 'dists/jammy')
-            components: List of components to load (e.g., ['main', 'universe']). If None, tries common ones.
+            dists: Specific distributions to load. If None, all available dists are discovered automatically.
+            components: Optional list of components to prioritize/filter (e.g., ['main', 'universe']).
 
         Returns:
             A Repository object with parsed data
@@ -132,60 +258,21 @@ class RepositoryManager:
         repo = Repository(url=repo_url, name=urlparse(repo_url).netloc)
         cache_dir = self._get_repo_cache_dir(repo_url)
 
-        # Default components to try
-        if components is None:
-            components = ["main", "restricted", "universe", "multiverse"]
+        discovered_dists = dists or await self._discover_distributions(repo_url)
 
-        # Try to download and parse Release file for the distribution
-        release_url = urljoin(repo_url, f"{dist}/Release")
-        release_path = cache_dir / f"{dist.replace('/', '_')}Release"
+        errors: list[str] = []
+        for dist_name in discovered_dists:
+            try:
+                release = await self._load_release(repo_url, dist_name, components, cache_dir)
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
 
-        try:
-            await self._download_file(release_url, release_path)
-        except httpx.HTTPError as e:
-            raise ValueError(f"Failed to download Release file from {release_url}") from e
+            repo.releases[release.name] = release
 
-        # Parse Release file
-        release_content = release_path.read_text(encoding="utf-8")
-        release_data = next(deb822.Release.iter_paragraphs(release_content))
+        if not repo.releases:
+            if errors:
+                raise ValueError("Unable to load any distributions: " + "; ".join(errors))
+            raise ValueError("Unable to load any distributions from repository")
 
-        release = Release(
-            name=dist,
-            codename=release_data.get("Codename"),
-            suite=release_data.get("Suite"),
-            version=release_data.get("Version"),
-            architectures=release_data.get("Architectures", "").split(),
-        )
-
-        # For each component and architecture, download and parse Packages files
-        for comp_name in components:
-            component = Component(name=comp_name)
-
-            for arch in release.architectures:
-                if not arch or arch == "all":
-                    continue
-
-                # Try to download Packages file (prefer .gz)
-                packages_url = urljoin(repo_url, f"{dist}/{comp_name}/binary-{arch}/Packages.gz")
-                packages_path = cache_dir / f"{dist.replace('/', '_')}{comp_name}_binary-{arch}_Packages.gz"
-
-                try:
-                    await self._download_file(packages_url, packages_path)
-                    packages = self._parse_packages_file(packages_path)
-                    component.packages.update(packages)
-                except httpx.HTTPError:
-                    # Try without .gz
-                    packages_url = urljoin(repo_url, f"{dist}/{comp_name}/binary-{arch}/Packages")
-                    packages_path = cache_dir / f"{dist.replace('/', '_')}{comp_name}_binary-{arch}_Packages"
-                    try:
-                        await self._download_file(packages_url, packages_path)
-                        packages = self._parse_packages_file(packages_path)
-                        component.packages.update(packages)
-                    except httpx.HTTPError:
-                        continue  # Skip this component/architecture combination
-
-            if component.packages:
-                release.components[comp_name] = component
-
-        repo.releases[release.name] = release
         return repo

@@ -53,13 +53,11 @@ class AppState(rx.State):
 
         try:
             manager = RepositoryManager(cache_dir=Path(cache_dir))
-            # For now, try loading jammy (Ubuntu 22.04) as an example
-            # In the future, we'll detect available distributions
-            self.repository = await manager.load_repository(
-                self.repo_url, dist="dists/jammy", components=["main", "universe"]
-            )
+            self.repository = await manager.load_repository(self.repo_url, components=["main", "universe"])
             self.repo_loaded = True
-            self.status_message = "Repository loaded successfully!"
+            release_count = len(self.repository.releases)
+            plural = "release" if release_count == 1 else "releases"
+            self.status_message = f"Repository loaded successfully ({release_count} {plural})!"
 
             # Set default selections
             if self.repository.releases:
