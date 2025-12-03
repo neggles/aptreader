@@ -9,10 +9,13 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28.1",
+    "pandas>=2.3.3",
     "pydantic>=2.12.5",
+    "python-dateutil>=2.9.0.post0",
     "python-debian>=1.0.1",
     "reflex>=0.8.21",
     "typer>=0.20.0",
+    "tzdata>=2025.2",
 ]
 
 [project.scripts]
@@ -51,3 +54,7 @@ extend-ignore = [ "I001"]
 
 [tool.ruff.lint.flake8-quotes]
 inline-quotes = "double"
+
+
+[tool.pyright]
+enableExperimentalFeatures = true

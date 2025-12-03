@@ -4,6 +4,8 @@ import reflex as rx
 
 from aptreader import styles
 
+from .logo import logo
+
 
 def sidebar_header() -> rx.Component:
     """Sidebar header.
@@ -13,10 +15,7 @@ def sidebar_header() -> rx.Component:
 
     """
     return rx.hstack(
-        rx.color_mode_cond(
-            rx.image(src="/reflex_black.svg", height="1.5em"),
-            rx.image(src="/reflex_white.svg", height="1.5em"),
-        ),
+        logo(),
         rx.spacer(),
         align="center",
         width="100%",
@@ -33,20 +32,8 @@ def sidebar_footer() -> rx.Component:
 
     """
     return rx.hstack(
-        rx.link(
-            rx.text("Docs", size="3"),
-            href="https://reflex.dev/docs/getting-started/introduction/",
-            color_scheme="gray",
-            underline="none",
-        ),
-        rx.link(
-            rx.text("Blog", size="3"),
-            href="https://reflex.dev/blog/",
-            color_scheme="gray",
-            underline="none",
-        ),
-        rx.spacer(),
         rx.color_mode.button(style={"opacity": "0.8", "scale": "0.95"}),
+        rx.spacer(),
         justify="start",
         align="center",
         width="100%",
@@ -131,22 +118,16 @@ def sidebar() -> rx.Component:
     """
     from reflex.page import DECORATED_PAGES
 
-    ordered_page_routes = [
-        "/",
-        "/table",
-        "/about",
-        "/profile",
-        "/settings",
-    ]
+    from aptreader.constants import ORDERED_PAGE_ROUTES
 
     pages = [page_dict for page_list in DECORATED_PAGES.values() for _, page_dict in page_list]
 
     ordered_pages = sorted(
         pages,
         key=lambda page: (
-            ordered_page_routes.index(page["route"])
-            if page["route"] in ordered_page_routes
-            else len(ordered_page_routes)
+            ORDERED_PAGE_ROUTES.index(page["route"])
+            if page["route"] in ORDERED_PAGE_ROUTES
+            else len(ORDERED_PAGE_ROUTES)
         ),
     )
 

@@ -1,14 +1,12 @@
+# pyright: reportArgumentType=false
 """Common templates used between pages in the app."""
-
-from __future__ import annotations
 
 from typing import Callable
 
 import reflex as rx
 
-from .. import styles
-from ..components.navbar import navbar
-from ..components.sidebar import sidebar
+from aptreader import styles
+from aptreader.components.sidebar import sidebar
 
 # Meta tags for the app.
 default_meta = [
@@ -37,7 +35,7 @@ def menu_item_link(text, href):
 class ThemeState(rx.State):
     """The state for the theme of the app."""
 
-    accent_color: str = "crimson"
+    accent_color: str = "violet"
 
     gray_color: str = "gray"
 
@@ -103,33 +101,14 @@ def template(
 
         def templated_page():
             return rx.flex(
-                navbar(),
                 sidebar(),
                 rx.flex(
-                    rx.vstack(
-                        page_content(),
-                        width="100%",
-                        **styles.template_content_style,
-                    ),
+                    rx.vstack(page_content(), width="100%", **styles.template_content_style),
                     width="100%",
                     **styles.template_page_style,
-                    max_width=[
-                        "100%",
-                        "100%",
-                        "100%",
-                        "100%",
-                        "100%",
-                        styles.max_width,
-                    ],
+                    max_width=["100%", "100%", "100%", "100%", "100%", styles.max_width],
                 ),
-                flex_direction=[
-                    "column",
-                    "column",
-                    "column",
-                    "column",
-                    "column",
-                    "row",
-                ],
+                flex_direction=["column", "column", "column", "column", "column", "row"],
                 width="100%",
                 margin="auto",
                 position="relative",
@@ -143,7 +122,7 @@ def template(
             script_tags=script_tags,
             on_load=on_load,
         )
-        def theme_wrap():
+        def theme_wrap() -> rx.Component:
             return rx.theme(
                 templated_page(),
                 has_background=True,
@@ -153,13 +132,8 @@ def template(
                 scaling=ThemeState.scaling,
             )
 
-        ALL_PAGES.append(
-            {
-                "route": route,
-            }
-            | ({"title": title} if title is not None else {})
-        )
+        ALL_PAGES.append({"route": route} | ({"title": title} if title is not None else {}))
 
-        return theme_wrap
+        return theme_wrap  # type: ignore
 
     return decorator

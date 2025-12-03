@@ -1,15 +1,14 @@
-from os import getenv
-
 import reflex as rx
 
-db_url = getenv("APTREADER_DB_URL", "sqlite:///aptreader.db")
+from aptreader.constants import DB_URL
 
 config = rx.Config(
     app_name="aptreader",
-    db_url=db_url,
+    db_url=DB_URL,
     plugins=[
         rx.plugins.SitemapPlugin(),
         rx.plugins.TailwindV4Plugin(),
     ],
     cors_allowed_origins=["*"],
+    show_built_with_reflex=False,
 )
