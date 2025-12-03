@@ -2,7 +2,7 @@
 
 import reflex as rx
 
-from .pages import index
+from aptreader.pages import *  # noqa: F403
 
 # Create the Reflex app
 app = rx.App()

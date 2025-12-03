@@ -16,8 +16,8 @@
         "editor.defaultColorDecorators": "never",
         "gitlens.codeLens.symbolScopes": ["!Module"],
         "editor.codeActionsOnSave": {
-            "source.fixAll.ruff": "explicit",
-            "source.organizeImports.ruff": "explicit"
+            "source.organizeImports.ruff": "always",
+            "source.fixAll.ruff": "explicit"
         },
         "editor.formatOnType": true,
         "editor.wordBasedSuggestions": "off"

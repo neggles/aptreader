@@ -8,7 +8,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from debian import deb822
 
-from .models import Component, Package, Release, Repository
+from aptreader.models import Component, Package, Release, Repository
 
 
 class RepositoryManager:
@@ -143,7 +143,7 @@ class RepositoryManager:
         try:
             await self._download_file(release_url, release_path)
         except httpx.HTTPError as e:
-            raise ValueError(f"Failed to download Release file from {release_url}: {e}")
+            raise ValueError(f"Failed to download Release file from {release_url}") from e
 
         # Parse Release file
         release_content = release_path.read_text(encoding="utf-8")

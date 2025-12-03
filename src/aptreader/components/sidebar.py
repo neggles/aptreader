@@ -2,7 +2,7 @@
 
 import reflex as rx
 
-from .. import styles
+from aptreader import styles
 
 
 def sidebar_header() -> rx.Component:
@@ -13,7 +13,6 @@ def sidebar_header() -> rx.Component:
 
     """
     return rx.hstack(
-        # The logo.
         rx.color_mode_cond(
             rx.image(src="/reflex_black.svg", height="1.5em"),
             rx.image(src="/reflex_white.svg", height="1.5em"),
@@ -140,11 +139,7 @@ def sidebar() -> rx.Component:
         "/settings",
     ]
 
-    pages = [
-        page_dict
-        for page_list in DECORATED_PAGES.values()
-        for _, page_dict in page_list
-    ]
+    pages = [page_dict for page_list in DECORATED_PAGES.values() for _, page_dict in page_list]
 
     ordered_pages = sorted(
         pages,

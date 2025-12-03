@@ -1,7 +1,6 @@
 """Data models for APT repository structures."""
 
 from pydantic import Field, BaseModel
-from pydantic.dataclasses import dataclass
 
 
 class Package(BaseModel):

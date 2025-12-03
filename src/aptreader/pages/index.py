@@ -2,11 +2,11 @@
 
 import reflex as rx
 
-from ..state import AppState
-from ..templates import template
+from aptreader.states.app import AppState
+from aptreader.templates import template
 
 
-@template(route="/")
+@template(route="/", title="Repositories", on_load=AppState.on_load)
 def index() -> rx.Component:
     """Main page component."""
     return rx.container(

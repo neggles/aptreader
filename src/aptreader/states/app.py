@@ -1,9 +1,13 @@
 """Application state for aptreader."""
 
+from pathlib import Path
+
 import reflex as rx
 
-from .models import Repository
-from .repository import RepositoryManager
+from aptreader.models import Repository
+from aptreader.repository import RepositoryManager
+
+from .settings import SettingsState
 
 
 class AppState(rx.State):
@@ -16,6 +20,10 @@ class AppState(rx.State):
     repository: Repository | None = None
     selected_release: str = ""
     selected_component: str = ""
+
+    @rx.event
+    async def on_load(self):
+        settings = await self.get_state(SettingsState)
 
     def set_repo_url(self, url: str):
         """Update the repository URL."""
@@ -32,8 +40,17 @@ class AppState(rx.State):
         self.error_message = ""
         self.repo_loaded = False
 
+        cache_dir = SettingsState.cache_dir
+        if not cache_dir:
+            # Default to <repo_root>/.cache/aptreader
+            import os
+
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cache_dir = os.path.join(repo_root, ".cache", "aptreader")
+            SettingsState.cache_dir = cache_dir
+
         try:
-            manager = RepositoryManager()
+            manager = RepositoryManager(cache_dir=Path(cache_dir))
             # For now, try loading jammy (Ubuntu 22.04) as an example
             # In the future, we'll detect available distributions
             self.repository = await manager.load_repository(
