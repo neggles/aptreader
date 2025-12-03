@@ -1,6 +1,6 @@
 """Data models for APT repository structures."""
 
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field
 
 
 class Package(BaseModel):
@@ -38,6 +38,7 @@ class Release(BaseModel):
     suite: str | None = None
     version: str | None = None
     architectures: list[str] = Field(default_factory=list)
+    available_components: list[str] = Field(default_factory=list)
     components: dict[str, Component] = Field(default_factory=dict)
 
 

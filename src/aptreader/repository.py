@@ -64,7 +64,7 @@ class RepositoryManager:
         # Create a unique directory name based on the repo URL
         url_hash = hashlib.sha256(repo_url.encode()).hexdigest()[:16]
         parsed = urlparse(repo_url)
-        safe_name = f"{parsed.netloc}{parsed.path}".replace("/", "_").replace(":", "_")
+        safe_name = f"{parsed.netloc}_{parsed.path}".replace("/", "_").replace(":", "_")
         repo_dir = self.cache_dir / f"{safe_name}_{url_hash}"
         repo_dir.mkdir(parents=True, exist_ok=True)
         return repo_dir
@@ -113,6 +113,7 @@ class RepositoryManager:
         repo_url: str,
         dist_name: str,
         component_filter: list[str] | None,
+        architecture_filter: list[str] | None,
         cache_dir: Path,
     ) -> Release:
         """Download release metadata and packages for a single distribution."""
@@ -136,22 +137,35 @@ class RepositoryManager:
             suite=release_data.get("Suite"),
             version=release_data.get("Version"),
             architectures=release_data.get("Architectures", "").split(),
+            available_components=release_data.get("Components", "").split(),
         )
 
-        declared_components = release_data.get("Components", "").split()
+        declared_components = release.available_components
         if component_filter:
-            filter_set = list(dict.fromkeys(component_filter))
+            filter_set = [comp for comp in component_filter if comp]
             target_components = [comp for comp in declared_components if comp in filter_set]
             if not target_components:
-                target_components = filter_set
+                target_components = filter_set or ["main"]
         else:
             target_components = declared_components or ["main"]
+
+        filtered_architectures = [arch for arch in release.architectures if arch not in {"all", "source"}]
+        if architecture_filter:
+            filter_arches = [arch for arch in architecture_filter if arch]
+            target_arches = [arch for arch in filtered_architectures if arch in filter_arches]
+            if not target_arches:
+                target_arches = [arch for arch in filter_arches if arch not in {"all", "source"}]
+        else:
+            target_arches = filtered_architectures
+
+        if not target_arches:
+            target_arches = filtered_architectures
 
         for comp_name in target_components:
             component = Component(name=comp_name)
 
-            for arch in release.architectures:
-                if not arch or arch in {"all", "source"}:
+            for arch in target_arches:
+                if not arch:
                     continue
 
                 packages_url = urljoin(repo_url, f"{dist_path}/{comp_name}/binary-{arch}/Packages.gz")
@@ -239,7 +253,11 @@ class RepositoryManager:
         return packages
 
     async def load_repository(
-        self, repo_url: str, dists: list[str] | None = None, components: list[str] | None = None
+        self,
+        repo_url: str,
+        dists: list[str] | None = None,
+        components: list[str] | None = None,
+        architectures: list[str] | None = None,
     ) -> Repository:
         """Load and parse an APT repository.
 
@@ -247,6 +265,7 @@ class RepositoryManager:
             repo_url: The base URL of the APT repository
             dists: Specific distributions to load. If None, all available dists are discovered automatically.
             components: Optional list of components to prioritize/filter (e.g., ['main', 'universe']).
+            architectures: Optional list of architectures to load (e.g., ['amd64', 'arm64']).
 
         Returns:
             A Repository object with parsed data
@@ -262,8 +281,16 @@ class RepositoryManager:
 
         errors: list[str] = []
         for dist_name in discovered_dists:
+            dist_cache_dir = cache_dir / dist_name.replace("/", "_")
+            dist_cache_dir.mkdir(parents=True, exist_ok=True)
             try:
-                release = await self._load_release(repo_url, dist_name, components, cache_dir)
+                release = await self._load_release(
+                    repo_url,
+                    dist_name,
+                    component_filter=components,
+                    architecture_filter=architectures,
+                    cache_dir=dist_cache_dir,
+                )
             except ValueError as exc:
                 errors.append(str(exc))
                 continue

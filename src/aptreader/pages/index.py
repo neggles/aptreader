@@ -1,5 +1,7 @@
 """Main index page for aptreader."""
 
+from email.policy import default
+
 import reflex as rx
 
 from aptreader.states.app import AppState
@@ -25,6 +27,46 @@ def index() -> rx.Component:
                 on_change=AppState.set_repo_url,
                 width="100%",
             ),
+            rx.box(
+                rx.heading("Components", size="4", margin_bottom="0.5em"),
+                rx.text(
+                    "Select specific components or leave empty to include every component declared by the repo.",
+                    color="gray",
+                    margin_bottom="0.5em",
+                    size="2",
+                ),
+                rx.checkbox_group.root(
+                    rx.foreach(
+                        AppState.available_components,
+                        lambda comp: rx.checkbox_group.item(comp, value=comp),
+                    ),
+                    default_value=AppState.component_filter,
+                ),
+                padding="1em",
+                border="1px solid #e0e0e0",
+                border_radius="8px",
+                width="100%",
+            ),
+            rx.box(
+                rx.heading("Architectures", size="4", margin_bottom="0.5em"),
+                rx.text(
+                    "Choose which architectures to download (clear all to fetch every architecture).",
+                    color="gray",
+                    margin_bottom="0.5em",
+                    size="2",
+                ),
+                rx.checkbox_group.root(
+                    rx.foreach(
+                        AppState.available_architectures,
+                        lambda arch: rx.checkbox_group.item(arch, value=arch),
+                    ),
+                    default_value=AppState.architecture_filter,
+                ),
+                padding="1em",
+                border="1px solid #e0e0e0",
+                border_radius="8px",
+                width="100%",
+            ),
             rx.button(
                 "Load Repository",
                 on_click=AppState.load_repository,
@@ -32,19 +74,11 @@ def index() -> rx.Component:
             ),
             rx.cond(
                 AppState.status_message != "",
-                rx.text(
-                    AppState.status_message,
-                    margin_top="1em",
-                    color="green",
-                ),
+                rx.text(AppState.status_message, margin_top="1em", color="green"),
             ),
             rx.cond(
                 AppState.error_message != "",
-                rx.text(
-                    AppState.error_message,
-                    margin_top="1em",
-                    color="red",
-                ),
+                rx.text(AppState.error_message, margin_top="1em", color="red"),
             ),
             spacing="2",
             width="100%",

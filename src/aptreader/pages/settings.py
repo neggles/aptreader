@@ -12,7 +12,7 @@ def settings() -> rx.Component:
         rx.text("Configure aptreader options below.", color="gray", margin_bottom="1em"),
         rx.input(
             label="Cache Directory",
-            value=SettingsState.get_cache_dir,
+            value=SettingsState.cache_dir_str,
             on_change=SettingsState.set_cache_dir,
             width="100%",
             placeholder="e.g. ~/.cache/aptreader",
@@ -23,8 +23,8 @@ def settings() -> rx.Component:
             margin_top="1em",
         ),
         rx.cond(
-            SettingsState.get_message is not None,
-            rx.text(SettingsState.get_message, color="green", margin_top="1em"),
+            SettingsState.message is not None,
+            rx.text(SettingsState.message, color="green", margin_top="1em"),
         ),
         spacing="2",
         width="100%",
