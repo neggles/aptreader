@@ -29,7 +29,6 @@ assets/external/
 # Icon must end with two \r
 Icon
 
-
 # Thumbnails
 ._*
 
@@ -249,3 +248,7 @@ poetry.toml
 pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# local misc and temp files
+/misc/
+/temp/
