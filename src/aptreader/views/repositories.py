@@ -1,5 +1,3 @@
-import asyncio
-
 import reflex as rx
 
 from ..backend.backend import Repository, State
@@ -207,18 +205,6 @@ def _header_cell(text: str, icon: str, max_width: str | None = None) -> rx.Compo
     )
 
 
-class SpinnerState(rx.State):
-    loading: bool = False
-
-    @rx.event(background=True)
-    async def start_loading(self):
-        async with self:
-            self.loading = True
-        State.load_repositories(True)
-        async with self:
-            self.loading = False
-
-
 def repositories_table():
     return rx.fragment(
         rx.flex(
@@ -227,11 +213,11 @@ def repositories_table():
             rx.button(
                 rx.icon(
                     "refresh-cw",
-                    style={"animation": rx.cond(SpinnerState.loading, "spin 1s linear infinite", "none")},
+                    style={"animation": rx.cond(State.is_loading, "spin 1s linear infinite", "none")},
                 ),
                 rx.text("Reload repositories", size="3", display=["none", "none", "block"]),
                 size="3",
-                on_click=SpinnerState.start_loading,
+                on_click=State.load_repositories(True),
             ),
             rx.cond(
                 State.sort_reverse,

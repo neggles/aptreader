@@ -46,11 +46,13 @@ class State(rx.State):
     current_repo: Repository | None = None
 
     _first_load: bool = True
+    is_loading: bool = False
 
     @rx.event
     def load_repositories(self, toast: bool = False) -> rx.event.EventSpec:
         """Load repository entries from the database."""
         try:
+            self.is_loading = True
             is_first = self._first_load
             self._first_load = False
             with rx.session() as session:
@@ -83,6 +85,8 @@ class State(rx.State):
             return rx.toast.success("Repositories loaded successfully.") if (toast or is_first) else rx.noop()
         except Exception as e:
             return rx.toast.error(f"Error loading repositories: {e}")
+        finally:
+            self.is_loading = False
 
     @rx.event
     def set_current_repo(self, repo_id: int | None):
