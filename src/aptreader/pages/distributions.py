@@ -17,8 +17,22 @@ def show_distribution(dist: Distribution):
         rx.table.cell(dist.suite),
         rx.table.cell(dist.origin),
         rx.table.cell(dist.version),
-        rx.table.cell(dist.architectures),
-        rx.table.cell(dist.components),
+        rx.table.cell(
+            rx.cond(
+                dist.architectures,
+                rx.hstack(
+                    rx.foreach(dist.architectures, lambda arch: rx.text(arch)),
+                ),
+                "-",
+            )
+        ),
+        rx.table.cell(
+            rx.cond(
+                dist.components,
+                rx.hstack(rx.foreach(dist.components, lambda comp: rx.text(comp))),
+                "-",
+            )
+        ),
         rx.table.cell(dist.date),
         style={"_hover": {"bg": rx.color("gray", 3)}},
         align="center",
@@ -146,9 +160,9 @@ def distributions() -> rx.Component:
     State.set_current_repo(repo_id)
 
     return rx.vstack(
-        rx.heading(f"Distributions for {repo_id}", size="8"),
         distributions_table(),
         size="4",
         width="100%",
         padding="0",
+        on_mount=load_distributions(repo_id),
     )
