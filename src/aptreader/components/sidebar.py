@@ -3,6 +3,7 @@
 import reflex as rx
 
 from aptreader import styles
+from aptreader.backend.backend import AppState
 
 from .logo import logo
 
@@ -58,17 +59,18 @@ def sidebar_item(text: str, url: str) -> rx.Component:
     """
     # Whether the item is active.
     active = (rx.State.router.page.path == url.lower()) | (
-        (rx.State.router.page.path == "/") & text == "Overview"
+        (rx.State.router.page.path == "/") & text == "Repositories"
     )
+
+    link_url = url.split("/[[...splat]]")[0] if "/[[...splat]]" in url else url
 
     return rx.link(
         rx.hstack(
             rx.match(
                 text,
-                ("Overview", sidebar_item_icon("home")),
-                ("Table", sidebar_item_icon("table-2")),
-                ("About", sidebar_item_icon("book-open")),
-                ("Profile", sidebar_item_icon("user")),
+                ("Repositories", sidebar_item_icon("square-library")),
+                ("Distributions", sidebar_item_icon("library")),
+                ("Packages", sidebar_item_icon("package")),
                 ("Settings", sidebar_item_icon("settings")),
                 sidebar_item_icon("layout-dashboard"),
             ),
@@ -105,7 +107,7 @@ def sidebar_item(text: str, url: str) -> rx.Component:
             padding="0.35em",
         ),
         underline="none",
-        href=url,
+        href=link_url,
         width="100%",
     )
 
@@ -116,11 +118,12 @@ def sidebar() -> rx.Component:
     Returns:
         The sidebar component.
     """
+    from reflex.config import get_config
     from reflex.page import DECORATED_PAGES
 
     from aptreader.constants import ORDERED_PAGE_ROUTES
 
-    pages = [page_dict for page_list in DECORATED_PAGES.values() for _, page_dict in page_list]
+    pages = [page_dict for (_, page_dict) in DECORATED_PAGES[get_config().app_name]]
 
     ordered_pages = sorted(
         pages,

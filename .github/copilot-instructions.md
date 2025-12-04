@@ -115,14 +115,14 @@ ruff format .      # Auto-format code
     - Table uses `on_mount=State.load_entries` to load data on page load
 
 3. **Progress Indicators**: Long-running async operations must show feedback
-    - `State.is_fetching` + `State.fetch_progress`: Boolean flag and progress message
+    - `State.is_fetching` + `State.fetch_message`: Boolean flag and progress message
     - Display with `rx.callout` containing `rx.spinner` and progress text
     - Update progress via callback passed to async functions
     - Example in `views/repositories.py` for distribution fetching
 
 3. **Event Handler Pattern**:
     ```python
-    on_click=lambda: State.delete_repository(repo.id)  # Pass params via lambda
+    on_click=lambda: State.delete_repository_from_db(repo.id)  # Pass params via lambda
     on_click=State.toggle_sort  # No-param handlers called directly
 
     # For conditional handlers (when param might be None)

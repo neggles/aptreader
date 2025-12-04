@@ -64,12 +64,13 @@ ALL_PAGES = []
 
 
 def template(
-    route: str | None = None,
-    title: str | None = None,
+    route: str,
+    title: str,
     description: str | None = None,
     meta: str | None = None,
     script_tags: list[rx.Component] | None = None,
     on_load: rx.event.EventType[()] | None = None,
+    nav_url: str | None = None,
 ) -> Callable[[Callable[[], rx.Component]], rx.Component]:
     """The template for each page of the app.
 

@@ -1,12 +1,16 @@
 """Repository fetching and distribution discovery for APT repositories."""
 
+import datetime
 import logging
+from enum import Enum
 from html.parser import HTMLParser
+from os import utime
 from pathlib import Path
-from typing import AsyncGenerator, Callable
+from typing import Callable
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from dateutil.parser import parse as parse_date
 from debian import deb822
 
 from .constants import REPOS_DIR
@@ -76,31 +80,82 @@ def get_repo_base_path(repo_url: str) -> Path:
     return REPOS_DIR / parsed.netloc / parsed.path.strip("/")
 
 
+def try_parse_date(date_str: str | None) -> datetime.datetime | None:
+    """Try to parse a date string into a timestamp.
+
+    Args:
+        date_str: The date string to parse (e.g., from HTTP Last-Modified header)
+
+    Returns:
+        The parsed timestamp, or None if parsing failed or date_str is None
+    """
+
+    try:
+        return parse_date(date_str) if date_str else None
+    except Exception as e:
+        logger.debug(f"Failed to parse date '{date_str}': {e}")
+        return None
+
+
+class SkipMode(str, Enum):
+    """File download skip modes.
+    FAST: Skip download if local file exists.
+    CHECK: Check Last-Modified and Content-Length headers to decide.
+    NONE: Always download.
+    """
+
+    FAST = "fast"
+    CHECK = "check"
+    NONE = "none"
+
+
 async def download_file(
     url: str,
     output_path: Path,
+    skip_mode: SkipMode = SkipMode.CHECK,
 ) -> bool:
     """Download a file from a URL to a local path.
 
     Args:
         url: The URL to download from
         output_path: Where to save the downloaded file
-        progress_callback: Optional callback to report progress messages
+        skip_mode: The mode for skipping downloads if the file exists
 
     Returns:
         True if successful, False if download failed
     """
     try:
-        if output_path.is_file():
-            logger.info(f"File already exists, skipping download: {output_path}")
+        existing = output_path.is_file()
+        if existing and skip_mode == SkipMode.FAST:
+            logger.debug(f"Skipping download, file already exists: {output_path}")
             return True
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            if existing and skip_mode != SkipMode.NONE:
+                try:
+                    response = await client.head(url)
+                    response.raise_for_status()
+                    if last_modified := try_parse_date(response.headers.get("last-modified")):
+                        # allow a second for fs granularity
+                        if last_modified.timestamp() <= output_path.stat().st_mtime + 1:
+                            logger.info(f"Skipping download, local file mtime matches: {output_path}")
+                            return True
+
+                    elif remote_size := response.headers.get("content-length"):
+                        if int(remote_size) == output_path.stat().st_size:
+                            logger.info(f"Skipping download, local file size matches remote: {output_path}")
+                            return True
+
+                except Exception as e:
+                    logger.warning(f"Unable to check remote mtime or size for {url}: {e}")
+
             response = await client.get(url)
             response.raise_for_status()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(response.content)
+            if last_modified := response.headers.get("last-modified"):
+                remote_ts = parse_date(last_modified).timestamp()
+                utime(output_path, (remote_ts, remote_ts))
 
         logger.info(f"Downloaded {url} to {output_path}")
         return True
@@ -109,7 +164,7 @@ async def download_file(
         logger.warning(f"Failed to download {url}: {e}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error downloading {url}: {e}")
+        logger.exception(f"Unexpected error downloading {url}: {e}")
         return False
 
 
@@ -148,7 +203,7 @@ async def fetch_release_file(
 
         # Convert to dict for easier access
         parsed = dict(release_data)
-        logger.info(f"Parsed Release file for {dist}: {parsed.get('Codename', dist)}")
+        logger.debug(f"Parsed Release file for {dist}: {parsed.get('Codename', dist)}")
         return local_path, parsed
 
     except Exception as e:

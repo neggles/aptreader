@@ -1,71 +1,22 @@
+import asyncio
 import logging
-import re
-from datetime import UTC, datetime
-from importlib.metadata import distribution
+from math import floor
 from pathlib import Path
-from typing import Annotated, ClassVar, Sequence
 
 import reflex as rx
 import sqlmodel as sm
-from pydantic import computed_field
-from sqlalchemy.orm.session import object_session
-from sqlmodel import JSON, DateTime, Field, Relationship, func, select
+from sqlmodel import func, select
 
 from ..fetcher import discover_distributions, fetch_distributions
+from ..models.repository import Distribution, Repository
 
 logger = logging.getLogger(__name__)
 
 
-class Distribution(rx.Model, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    raw: str | None = Field(default=None)
-    architectures: list[str] = Field(sa_type=JSON, default_factory=list)
-    components: list[str] = Field(sa_type=JSON, default_factory=list)
-    date: str | None = Field(default=None)
-    description: str | None = Field(default=None)
-    origin: str
-    suite: str
-    version: str
-    codename: str
-
-    repository_id: int = Field(default=None, foreign_key="repository.id", ondelete="CASCADE")
-    repository: "Repository" = Relationship(back_populates="distributions")
-
-
-class Repository(rx.Model, table=True):
-    """The apt repository model."""
-
-    id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True, unique=True)
-    url: str = Field(index=True, unique=True)
-    update_ts: datetime = Field(
-        default=datetime.now(tz=UTC),
-        sa_column=sm.Column(
-            "update_ts",
-            DateTime(timezone=True),
-            server_default=sm.func.now(),
-            onupdate=sm.func.now(),
-            nullable=False,
-        ),
-    )
-
-    distributions: list["Distribution"] = Relationship(back_populates="repository", cascade_delete=True)
-
-    @computed_field
-    @property
-    def distribution_count(self) -> int:
-        """Get the number of distributions for this repository."""
-        with rx.session() as session:
-            q = select(func.count()).select_from(Distribution).where(Distribution.repository_id == self.id)
-            count = session.exec(q).one_or_none()
-            return count if count is not None else 0
-        return 0
-
-
-class State(rx.State):
+class AppState(rx.State):
     """The backend state."""
 
-    repositories: Sequence[Repository] = []
+    repositories: list[Repository] = []
     sort_value: str = ""
     sort_reverse: bool = False
     search_value: str = ""
@@ -75,11 +26,12 @@ class State(rx.State):
     is_loading: bool = False
 
     is_fetching: bool = False
-    fetch_progress: str = ""
-    distributions: list[Distribution] = []
+    fetch_repo_id: int = -1
+    fetch_progress: int = 100
+    fetch_message: str = ""
 
     @rx.event
-    def distribution_count(self, repo_id: int) -> int:
+    def repo_distribution_count(self, repo_id: int) -> int:
         """Get the number of distributions for the current repository."""
         with rx.session() as session:
             count = session.exec(
@@ -90,7 +42,7 @@ class State(rx.State):
         return 0
 
     @rx.event
-    def load_repositories(self, toast: bool = False) -> rx.event.EventSpec:
+    def load_repositories(self, toast: bool = False):
         """Load repository entries from the database."""
         try:
             self.is_loading = True
@@ -121,7 +73,7 @@ class State(rx.State):
                         )
                     query = query.order_by(order)
 
-                self.repositories = session.exec(query).all()
+                self.repositories = list(session.exec(query).all())
 
             return rx.toast.success("Repositories loaded successfully.") if (toast or is_first) else rx.noop()
         except Exception as e:
@@ -130,10 +82,25 @@ class State(rx.State):
             self.is_loading = False
 
     @rx.event
-    def set_current_repo(self, repo_id: int | None):
+    def set_current_repo(self, repo: Repository):
+        self.current_repo = repo
+
+    @rx.event
+    def set_current_repo_id(self, repo_id: int | None):
         """Set the current repository by ID."""
-        with rx.session() as session:
-            self.current_repo = session.get(Repository, repo_id, populate_existing=True) if repo_id else None
+        if repo_id:
+            with rx.session() as session:
+                self.current_repo = session.get(Repository, repo_id, populate_existing=True)
+        else:
+            logger.info("Clearing current repository (no ID provided)")
+            self.current_repo = None
+
+    @rx.event
+    def set_current_repo_name(self, repo_name: str):
+        """Set the current repository by name."""
+        repo = next((r for r in self.repositories if r.name == repo_name), None)
+        if repo:
+            self.set_current_repo(repo)
 
     @rx.event
     def sort_values(self, sort_value: str):
@@ -149,10 +116,6 @@ class State(rx.State):
     def filter_values(self, search_value: str):
         self.search_value = search_value
         self.load_repositories(False)
-
-    @rx.event
-    def get_repository(self, repo: Repository):
-        self.current_repo = repo
 
     @rx.event
     def add_repository_to_db(self, form_data: dict) -> rx.event.EventSpec:
@@ -203,7 +166,7 @@ class State(rx.State):
         return rx.toast.success(f"Repository '{form_data.get('name')}' updated successfully.")
 
     @rx.event
-    def delete_repository(self, id: int | None) -> rx.event.EventSpec:
+    def delete_repository_from_db(self, id: int | None) -> rx.event.EventSpec:
         """Delete a repository by ID."""
         if id is None:
             return rx.window_alert("No repository ID provided for deletion.")
@@ -220,11 +183,6 @@ class State(rx.State):
         self.load_repositories(False)
         return rx.toast.success(f"Repository '{repo.name}' deleted successfully.")
 
-    @rx.event
-    def update_fetch_progress(self, message: str):
-        """Update the fetch progress message."""
-        self.fetch_progress = message
-
     @rx.event(background=True)
     async def fetch_repository_distributions(self, repo_id: int):
         """Discover and fetch distributions for a repository.
@@ -234,7 +192,7 @@ class State(rx.State):
         """
         # Get the repository from the database
         async with self:
-            self.set_current_repo(repo_id)
+            self.set_current_repo_id(repo_id)
             if not self.current_repo or not self.current_repo.id:
                 yield rx.toast.error("Repository not found.")
                 return
@@ -244,9 +202,11 @@ class State(rx.State):
 
         try:
             async with self:
+                self.fetch_repo_id = repo_id
+                self.fetch_progress = 0
+                self.fetch_message = f"Starting distribution discovery for {repo_name}..."
                 self.is_fetching = True
-                self.fetch_progress = f"Starting distribution discovery for {repo_name}..."
-            yield
+                yield
 
             distributions = await discover_distributions(repo_url)
             if not distributions:
@@ -254,7 +214,7 @@ class State(rx.State):
                 return
             num_dists = len(distributions)
             async with self:
-                self.fetch_progress = f"Discovered {num_dists} distributions, starting fetch..."
+                self.fetch_message = f"Discovered {num_dists} distributions, starting fetch..."
                 yield
 
             # Fetch distributions
@@ -264,19 +224,23 @@ class State(rx.State):
                 results.append(dist_info)
                 idx += 1
                 async with self:
-                    self.fetch_progress = f"Fetched distribution {idx}/{num_dists}: {dist_info[0]}"
-                yield
+                    self.fetch_progress = floor((idx / num_dists) * 100)
+                    self.fetch_message = f"Fetched distribution {idx}/{num_dists}: {dist_info[0]}"
+                await asyncio.sleep(0.05)
 
             # Save distributions to database
             async with self:
-                self.fetch_progress = f"Saving {len(results)} distributions to database..."
+                self.fetch_message = f"Saving {len(results)} distributions to database..."
             yield
 
             self.replace_repository_distributions(repo_id, results)
 
             # Reload repositories to show updated timestamp
             async with self:
+                self.fetch_message = "Fetch complete."
                 self.load_repositories(False)
+            yield
+
             yield rx.toast.success(f"Successfully fetched {len(results)} distributions for {repo_name}")
 
         except Exception as e:
@@ -284,8 +248,15 @@ class State(rx.State):
             yield rx.toast.error(f"Error fetching distributions: {e}")
         finally:
             async with self:
+                self.fetch_progress = 100
+            yield
+            await asyncio.sleep(5)
+            async with self:
                 self.is_fetching = False
-                self.fetch_progress = ""
+                self.fetch_progress = 100
+                self.fetch_message = ""
+                self.fetch_repo_id = -1
+
             yield
 
     @rx.event
@@ -338,3 +309,29 @@ class State(rx.State):
             except Exception as e:
                 logger.exception("Error fetching distributions:")
                 return rx.toast.error(f"Error saving distributions to database: {e}")
+
+    @rx.var(cache=True)
+    def distributions(self) -> list[Distribution]:
+        """Get the distributions for the current repository."""
+        if self.current_repo is None:
+            return []
+        with rx.session() as session:
+            repo = session.get(Repository, self.current_repo.id, populate_existing=True)
+            if not repo:
+                return []
+            return repo.distributions
+
+    @rx.var
+    def current_repo_id(self) -> int:
+        """Get the current repository name."""
+        return self.current_repo.id if self.current_repo and self.current_repo.id else -1
+
+    @rx.var
+    def current_repo_name(self) -> str:
+        """Get the current repository name."""
+        return self.current_repo.name if self.current_repo else "Unknown"
+
+    @rx.var
+    def repository_names(self) -> list[str]:
+        """Get the list of repository names."""
+        return [repo.name for repo in self.repositories]
