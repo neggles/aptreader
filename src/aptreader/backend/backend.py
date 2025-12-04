@@ -7,8 +7,8 @@ import reflex as rx
 import sqlmodel as sm
 from sqlmodel import func, select
 
-from ..fetcher import discover_distributions, fetch_distributions
-from ..models.repository import Distribution, Repository
+from aptreader.fetcher import discover_distributions, fetch_distributions
+from aptreader.models.repository import Distribution, Repository
 
 logger = logging.getLogger(__name__)
 

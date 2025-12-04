@@ -1,7 +1,8 @@
 import reflex as rx
 
-from ..backend.backend import AppState, Repository
-from ..components.form_field import form_field
+from aptreader.backend.backend import AppState
+from aptreader.components.form_field import form_field
+from aptreader.models.repository import Repository
 
 button_size = "3"
 
@@ -328,7 +329,8 @@ def repositories_table():
                 ),
             ),
             rx.select(
-                ["name", "url", "update_ts"],
+                ["id", "name", "url", "update_ts", "repo_distribution_count"],
+                value=AppState.sort_value,
                 placeholder="Sort By: Name",
                 size="3",
                 on_change=lambda sort_value: AppState.sort_values(sort_value),
@@ -352,8 +354,8 @@ def repositories_table():
             rx.table.header(
                 rx.table.row(
                     _header_cell("ID", "hash", max_width="60px"),
-                    _header_cell("Name", "user"),
-                    _header_cell("URL", "link-2"),
+                    _header_cell("Name", "tag"),
+                    _header_cell("URL", "globe"),
                     _header_cell("Last Updated", "calendar"),
                     _header_cell("Distributions", "layers", max_width="140px"),
                     _header_cell("Actions", "cog", max_width="100px"),

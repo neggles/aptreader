@@ -1,7 +1,7 @@
 from .distributions import distributions
-from .index import index
+from .repositories import repositories
 
 __all__ = [
     "distributions",
-    "index",
+    "repositories",
 ]
