@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import reflex as rx
 import sqlmodel as sm
@@ -7,7 +10,13 @@ from dateutil.parser import parse as parse_date
 from pydantic import computed_field
 from sqlmodel import JSON, DateTime, Field, Relationship, func, select
 
+if TYPE_CHECKING:  # pragma: no cover
+    from aptreader.models.packages import Architecture, Component, Package
+
+from .links import PackageDistributionLink
+
 logger = logging.getLogger(__name__)
+
 
 # fmt: off
 ORDERED_COMPONENTS = [
@@ -30,7 +39,6 @@ N_ORDERED_ARCHITECTURES = len(ORDERED_ARCHITECTURES)
 
 
 class Distribution(rx.Model, table=True):
-    id: int | None = Field(default=None, primary_key=True)
     raw: str | None = Field(default=None)
     architectures: list[str] = Field(sa_type=JSON, default_factory=list)
     components: list[str] = Field(sa_type=JSON, default_factory=list)
@@ -41,8 +49,22 @@ class Distribution(rx.Model, table=True):
     version: str
     codename: str
 
-    repository_id: int = Field(default=None, foreign_key="repository.id", ondelete="CASCADE")
+    repository_id: int = Field(default=None, foreign_key="repository.id")
     repository: "Repository" = Relationship(back_populates="distributions")
+
+    component_rows: list["Component"] = Relationship(
+        back_populates="distribution",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    architecture_rows: list["Architecture"] = Relationship(
+        back_populates="distribution",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    packages: list["Package"] = Relationship(
+        back_populates="distribution",
+        link_model=PackageDistributionLink,
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
     @computed_field
     @property
@@ -88,7 +110,6 @@ class Distribution(rx.Model, table=True):
 class Repository(rx.Model, table=True):
     """The apt repository model."""
 
-    id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     url: str = Field(index=True, unique=True)
     update_ts: datetime = Field(

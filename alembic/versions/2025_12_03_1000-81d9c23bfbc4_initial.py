@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.Column("version", sqlmodel.AutoString(), nullable=False),
         sa.Column("codename", sqlmodel.AutoString(), nullable=False),
         sa.Column("repository_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(["repository_id"], ["repository.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["repository_id"], ["repository.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
     # ### end Alembic commands ###
