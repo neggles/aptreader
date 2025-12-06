@@ -19,6 +19,7 @@ dependencies = [
     "reflex>=0.8.21",
     "typer>=0.20.0",
     "tzdata>=2025.2",
+    "wrapt>=2.0.1",
 ]
 
 [project.scripts]

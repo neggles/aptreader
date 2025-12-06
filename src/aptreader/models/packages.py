@@ -5,18 +5,18 @@ from typing import TYPE_CHECKING
 
 import reflex as rx
 from pydantic import computed_field
-from sqlalchemy import UniqueConstraint
-from sqlmodel import JSON, Column, DateTime, Field, Relationship
+from sqlmodel import JSON, Column, DateTime, Field, Relationship, UniqueConstraint
+
+from aptreader.models.links import PackageArchitectureLink, PackageComponentLink, PackageDistributionLink
 
 if TYPE_CHECKING:
     from aptreader.models.repository import Distribution, Repository
-from .links import PackageArchitectureLink, PackageComponentLink, PackageDistributionLink
 
 
 class Component(rx.Model, table=True):
     """APT component (e.g., main, universe) tied to a distribution."""
 
-    __table_args__ = (UniqueConstraint("distribution_id", "name"),)
+    __table_args__ = (UniqueConstraint("distribution_id", "name", name="uq_component_distribution_name"),)
 
     name: str = Field(index=True)
     last_fetched_at: datetime | None = Field(
@@ -24,7 +24,7 @@ class Component(rx.Model, table=True):
         sa_column=Column(DateTime(timezone=True)),
     )
 
-    distribution_id: int = Field(foreign_key="distribution.id")
+    distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
     distribution: "Distribution" = Relationship(
         back_populates="component_rows", sa_relationship_kwargs={"lazy": "selectin"}
     )
@@ -32,13 +32,14 @@ class Component(rx.Model, table=True):
     packages: list["Package"] = Relationship(
         back_populates="components",
         link_model=PackageComponentLink,
+        cascade_delete=True,
     )
 
 
 class Architecture(rx.Model, table=True):
     """APT architecture (e.g., amd64) available for a distribution."""
 
-    __table_args__ = (UniqueConstraint("distribution_id", "name"),)
+    __table_args__ = (UniqueConstraint("distribution_id", "name", name="uq_architecture_distribution_name"),)
 
     name: str = Field(index=True)
     last_fetched_at: datetime | None = Field(
@@ -46,7 +47,7 @@ class Architecture(rx.Model, table=True):
         sa_column=Column(DateTime(timezone=True)),
     )
 
-    distribution_id: int = Field(foreign_key="distribution.id")
+    distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
     distribution: "Distribution" = Relationship(
         back_populates="architecture_rows", sa_relationship_kwargs={"lazy": "selectin"}
     )
@@ -54,11 +55,16 @@ class Architecture(rx.Model, table=True):
     packages: list["Package"] = Relationship(
         back_populates="architectures",
         link_model=PackageArchitectureLink,
+        cascade_delete=True,
     )
 
 
 class Package(rx.Model, table=True):
     """Stored metadata for a single package entry from Packages.gz."""
+
+    __table_args__ = (
+        UniqueConstraint("repository_id", "name", "version", name="uq_package_repository_name_version"),
+    )
 
     name: str = Field(index=True)
     version: str = Field(index=True)
@@ -76,12 +82,9 @@ class Package(rx.Model, table=True):
     checksum_sha1: str | None = None
     checksum_sha256: str | None = None
     tags: str | None = None
-    raw_control: dict | None = Field(
-        sa_type=JSON,
-        default=None,
-    )
+    raw_control: dict | None = Field(default=None, sa_type=JSON)
 
-    repository_id: int = Field(default=None, foreign_key="repository.id")
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
         back_populates="packages",
         sa_relationship_kwargs={"lazy": "selectin"},

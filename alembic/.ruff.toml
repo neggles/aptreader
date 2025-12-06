@@ -1,0 +1,4 @@
+extend = "../pyproject.toml"
+
+[lint.isort]
+forced-separate = ["reflex"]

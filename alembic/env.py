@@ -1,44 +1,44 @@
+# ruff: isort:skip-file
+import logging
 import warnings
 from logging.config import fileConfig
 
-import reflex as rx
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.exc import SAWarning
 
+# trigger DB monkey-patching
+from aptreader.db import NAMING_CONVENTION
+
+# this needs to be _after_ aptreader.db is imported
+import reflex as rx  # noqa: E402
 
 config = context.config
-
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+logger = logging.getLogger("alembic.env")
 
 # Try to set the SQLAlchemy URL from the Reflex config
 try:
     from rxconfig import DB_URL  # type: ignore[import]
 
     config.set_main_option("sqlalchemy.url", DB_URL)
-    warnings.warn(
-        "Using rxconfig for Alembic migrations.",
-        category=RuntimeWarning,
-        stacklevel=1,
-    )
+    logger.info("Loaded rxconfig for Alembic migrations.")
 except ImportError:
-    warnings.warn(
-        "Could not import rxconfig, using alembic.ini settings.",
-        category=RuntimeWarning,
-        stacklevel=1,
-    )
+    logger.warning("Could not import rxconfig, using alembic.ini settings.")
     pass
 
-# add your model's MetaData object here
-# for 'autogenerate' support
+# filter out the SA warnings caused by rx.model.ModelRegistry.get_metadata
+warnings.filterwarnings("ignore", category=SAWarning, message="already exists within the given MetaData")
+
+# get the target metadata from Reflex models
 target_metadata = rx.model.ModelRegistry.get_metadata()
-target_metadata.naming_convention = {
-    "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
-    "ck": "ck_%(table_name)s_`%(constraint_name)s`",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s",
-}
+
+# make sure our monkeypatch worked
+naming_keys = list(target_metadata.naming_convention.keys())
+if any(key not in naming_keys for key in NAMING_CONVENTION.keys()):
+    raise RuntimeError("Alembic env.py metadata naming convention monkeypatch failed.")
 
 
 def run_migrations_offline() -> None:
@@ -59,6 +59,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_as_batch=True,
     )
 
     with context.begin_transaction():
@@ -82,6 +83,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            dialect_opts={"paramstyle": "named"},
+            render_as_batch=True,
         )
 
         with context.begin_transaction():

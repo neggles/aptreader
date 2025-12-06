@@ -6,7 +6,7 @@ import reflex as rx
 import sqlmodel as sm
 from dateutil.parser import parse as parse_date
 from pydantic import computed_field
-from sqlmodel import JSON, DateTime, Field, Relationship, func, select
+from sqlmodel import JSON, DateTime, Field, Relationship, UniqueConstraint, func, select
 
 if TYPE_CHECKING:
     from aptreader.models.packages import Architecture, Component
@@ -39,6 +39,10 @@ N_ORDERED_ARCHITECTURES = len(ORDERED_ARCHITECTURES)
 
 
 class Distribution(rx.Model, table=True):
+    __table_args__ = (
+        UniqueConstraint("repository_id", "codename", name="uq_distribution_repository_codename"),
+    )
+
     architectures: list[str] = Field(sa_type=JSON, default_factory=list)
     components: list[str] = Field(sa_type=JSON, default_factory=list)
     date: str | None = Field(default=None)
@@ -49,15 +53,15 @@ class Distribution(rx.Model, table=True):
     codename: str
     raw: str | None = Field(default=None, repr=False)
 
-    repository_id: int = Field(default=None, foreign_key="repository.id")
+    repository_id: int = Field(default=None, foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
         back_populates="distributions", sa_relationship_kwargs={"lazy": "selectin"}
     )
 
-    component_rows: list["Component"] = Relationship(back_populates="distribution")
-    architecture_rows: list["Architecture"] = Relationship(back_populates="distribution")
+    component_rows: list["Component"] = Relationship(back_populates="distribution", cascade_delete=True)
+    architecture_rows: list["Architecture"] = Relationship(back_populates="distribution", cascade_delete=True)
     packages: list["Package"] = Relationship(
-        back_populates="distributions", link_model=PackageDistributionLink
+        back_populates="distributions", link_model=PackageDistributionLink, cascade_delete=True
     )
 
     @computed_field
