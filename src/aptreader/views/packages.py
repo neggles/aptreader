@@ -2,7 +2,7 @@ import reflex as rx
 
 from aptreader.components.repo_select import repo_select
 from aptreader.models.packages import Package
-from aptreader.pages.packages import PackagesState
+from aptreader.states.packages import PackagesState
 
 
 def packages_filters() -> rx.Component:
