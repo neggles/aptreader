@@ -17,7 +17,6 @@ dependencies = [
     "python-dateutil>=2.9.0.post0",
     "python-debian>=1.0.1",
     "reflex>=0.8.21",
-    "reflex-enterprise>=0.3.8",
     "typer>=0.20.0",
     "tzdata>=2025.2",
 ]
