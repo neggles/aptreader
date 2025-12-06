@@ -17,7 +17,7 @@ aptreader is a **Reflex web application** for browsing APT repository metadata. 
 ```python
 class AppState(rx.State):
     repositories: list[Repository] = []
-    
+
     @rx.event
     def load_repositories(self):
         with rx.session() as session:
@@ -110,13 +110,23 @@ uv pip install -e ".[dev]"
 - Format: `ruff format src/`
 - Target: Python 3.13, 110 char line length
 
+## Critical: Startup Testing Required
+
+**ALWAYS test code changes with `reflex run` before considering work complete.** The app must start without errors. Common startup failures:
+- Import errors (e.g., circular imports, missing imports)
+- Syntax errors in state event handlers
+- Invalid Reflex component syntax
+- Database migration issues
+- Model definition errors
+
+If `reflex run` exits with errors, the change is incomplete and must be fixed.
+
 ## Common Pitfalls
 
 1. **Don't forget `async with self`** in `@rx.event(background=True)` when updating state
 2. **Import order matters**: Reflex must be imported before models that use `rx.Model`
 3. **Session context**: Never pass SQLModel instances across sessions - query fresh in each scope
-4. **Reflex Enterprise**: Code has conditional imports for rxe (falls back to rx if unavailable)
-5. **Component sorting**: Use `format_components`/`format_architectures` computed fields, not raw lists
+4. **Component sorting**: Use `format_components`/`format_architectures` computed fields, not raw lists
 
 ## Key Files Reference
 
