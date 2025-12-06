@@ -94,10 +94,16 @@ reflex run  # Auto-reloads on code changes, opens http://localhost:3000
 ```
 
 **Database Migrations:**
+
+Any changes to model files (`src/aptreader/models/` or any subclass of `rx.Model`/`sqlmodel.Model`) require running migrations:
+
 ```bash
-alembic revision --autogenerate -m "description"  # Generate migration
-alembic upgrade head  # Apply migrations
+reflex db makemigrations  # Generate Alembic migration in alembic/versions/
+# Review the generated migration file carefully!
+reflex db migrate  # Apply migrations to database
 ```
+
+**CRITICAL**: Always review generated migration files in `alembic/versions/` before applying. Auto-generated migrations may not capture complex schema changes correctly.
 
 **Dependency Management:**
 Uses `uv` for builds (see `pyproject.toml` build-backend). Install deps with:
@@ -109,6 +115,7 @@ uv pip install -e ".[dev]"
 - Linting: `ruff check src/` (configured in pyproject.toml)
 - Format: `ruff format src/`
 - Target: Python 3.13, 110 char line length
+- Python conventions: See `.github/instructions/python.instructions.md`
 
 ## Critical: Startup Testing Required
 
