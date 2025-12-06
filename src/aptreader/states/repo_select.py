@@ -85,8 +85,8 @@ class RepoSelectState(rx.State):
             return rx.toast.info(f"Selected repository: {repo.name}")
 
     @rx.var
-    def current_repo_name(self) -> str | None:
-        return self.current_repo.name if self.current_repo else None
+    def current_repo_name(self) -> str:
+        return self.current_repo.name if self.current_repo else "None"
 
     @rx.var
     async def available_repo_names(self) -> list[str]:
