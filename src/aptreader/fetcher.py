@@ -6,7 +6,7 @@ from enum import Enum
 from html.parser import HTMLParser
 from os import utime
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Iterator
 from urllib.parse import urljoin, urlparse
 
 import aiofiles
@@ -124,12 +124,12 @@ async def download_file(
                     if last_modified := try_parse_date(response.headers.get("last-modified")):
                         # allow a second for fs granularity
                         if last_modified.timestamp() <= output_path.stat().st_mtime + 1:
-                            logger.info(f"Skipping download, local file mtime matches: {output_path}")
+                            logger.debug(f"Skipping download, local file mtime matches: {output_path}")
                             return True
 
                     elif remote_size := response.headers.get("content-length"):
                         if int(remote_size) == output_path.stat().st_size:
-                            logger.info(f"Skipping download, local file size matches remote: {output_path}")
+                            logger.debug(f"Skipping download, local file size matches remote: {output_path}")
                             return True
 
                 except Exception as e:
@@ -143,11 +143,15 @@ async def download_file(
                 remote_ts = parse_date(last_modified).timestamp()
                 utime(output_path, (remote_ts, remote_ts))
 
-        logger.info(f"Downloaded {url} to {output_path}")
+        logger.debug(f"Downloaded {url} to {output_path}")
         return True
 
-    except httpx.HTTPError as e:
-        logger.warning(f"Failed to download {url}: {e}")
+    except httpx.HTTPStatusError as e:
+        msg = f"Failed to download {url}: {e}"
+        if e.response.status_code == 404:
+            logger.debug(msg)
+        else:
+            logger.warning(msg)
         return False
     except Exception as e:
         logger.exception(f"Unexpected error downloading {url}: {e}")
@@ -157,7 +161,6 @@ async def download_file(
 async def fetch_release_file(
     repo_url: str,
     dist: str,
-    progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[Path | None, dict | None]:
     """Download and parse a Release file for a distribution.
 
@@ -173,9 +176,6 @@ async def fetch_release_file(
 
     release_url = urljoin(repo_url, f"dists/{dist}/Release")
     local_path = url_to_local_path(release_url)
-
-    if progress_callback:
-        progress_callback(f"Fetching Release file for {dist}")
 
     # Download the file
     success = await download_file(release_url, local_path)
@@ -202,7 +202,6 @@ async def discover_distributions(repo_url: str) -> list[str]:
 
     Args:
         repo_url: Base URL of the repository (e.g., https://archive.ubuntu.com/ubuntu/)
-        progress_callback: Optional callback to report progress messages
 
     Returns:
         List of distribution names found (e.g., ["jammy", "focal", "bookworm"])

@@ -1,14 +1,22 @@
 import reflex as rx
 import reflex_enterprise as rxe
 
+from aptreader.components.repo_select import repo_select
 from aptreader.pages.packages import PackagesState
+from aptreader.states.repo_select import RepoSelectState
 
 
 def packages_filters() -> rx.Component:
     return rx.flex(
-        rx.vstack(
-            rx.text(PackagesState.distribution_title, size="5", weight="bold"),
-            spacing="1",
+        repo_select(),
+        rx.text(
+            rx.cond(
+                RepoSelectState.current_repo,
+                "URL: " + RepoSelectState.current_repo.url,  # type: ignore
+                "",
+            ),
+            size="3",
+            color=rx.color("gray", 11),
         ),
         rx.spacer(),
         rx.select(

@@ -21,5 +21,6 @@
         },
         "editor.formatOnType": true,
         "editor.wordBasedSuggestions": "off"
-    }
+    },
+    "github.gitProtocol": "ssh"
 }

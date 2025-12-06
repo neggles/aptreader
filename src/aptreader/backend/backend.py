@@ -15,7 +15,6 @@ from aptreader.fetcher import (
     discover_distributions,
     download_packages_index,
     fetch_distributions,
-    iter_packages_entries,
     iter_packages_entries_async,
 )
 from aptreader.models.packages import Architecture, Component, Package
@@ -65,6 +64,7 @@ def _build_package_model(
         checksum_sha256=entry.get("SHA256"),
         tags=entry.get("Tag"),
         raw_control=entry,
+        repository=distribution.repository,
         distributions=[distribution],
         components=[component],
         architectures=[architecture],
@@ -246,6 +246,7 @@ class AppState(rx.State):
         self.load_repositories(False)
         return rx.toast.success(f"Repository '{repo.name}' deleted successfully.")
 
+    @long_running_task
     @rx.event(background=True)
     async def fetch_repository_distributions(self, repo_id: int):
         """Discover and fetch distributions for a repository.
@@ -428,9 +429,10 @@ class AppState(rx.State):
                         arch_name,
                         iter_packages_entries_async(local_path),
                     ):
-                        self.package_fetch_message = (
-                            f"Imported {count} new packages for {comp_name}/{arch_name}"
-                        )
+                        async with self:
+                            self.package_fetch_message = (
+                                f"Imported {count} new packages for {comp_name}/{arch_name}"
+                            )
                         new_count = count
                         await asyncio.sleep(0)
                     total_packages += new_count

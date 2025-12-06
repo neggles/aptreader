@@ -4,8 +4,9 @@ import reflex as rx
 from reflex.constants.colors import COLORS
 
 from aptreader.backend.backend import AppState
-from aptreader.components.repo_select import RepoSelectState, repo_select
+from aptreader.components.repo_select import repo_select
 from aptreader.models import Distribution
+from aptreader.states.repo_select import RepoSelectState
 
 logger = logging.getLogger(__name__)
 

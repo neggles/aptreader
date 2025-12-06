@@ -59,8 +59,6 @@ class Architecture(rx.Model, table=True):
 class Package(rx.Model, table=True):
     """Stored metadata for a single package entry from Packages.gz."""
 
-    __table_args__ = (UniqueConstraint("name", "version", name="uq_name_version"),)
-
     name: str = Field(index=True)
     version: str = Field(index=True)
     section: str | None = None
