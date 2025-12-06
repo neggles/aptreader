@@ -6,7 +6,6 @@ from reflex.constants.colors import COLORS
 from aptreader.backend.backend import AppState
 from aptreader.components.repo_select import repo_select
 from aptreader.models import Distribution
-from aptreader.states.repo_select import RepoSelectState
 
 logger = logging.getLogger(__name__)
 
@@ -140,25 +139,6 @@ def load_distributions(state: AppState):
     return rx.toast.info(f"Loaded distributions for {state.current_repo.name}.")
 
 
-def distributions_header() -> rx.Component:
-    return rx.hstack(
-        rx.heading("Repository:", size="3"),
-        repo_select(),
-        rx.text(
-            rx.cond(
-                RepoSelectState.current_repo,
-                "URL: " + RepoSelectState.current_repo.url,  # type: ignore
-                "",
-            ),
-            size="3",
-            color=rx.color("gray", 11),
-        ),
-        width="100%",
-        align="center",
-        margin_bottom="1em",
-    )
-
-
 def _header_cell(text: str, icon: str, **kwargs) -> rx.Component:
     """Create a table header cell with icon."""
     return rx.table.column_header_cell(
@@ -179,7 +159,7 @@ def distributions_table() -> rx.Component:
         rx.cond(
             AppState.current_repo is not None,
             rx.vstack(
-                distributions_header(),
+                repo_select(),
                 rx.cond(
                     AppState.is_fetching_packages,
                     rx.callout(

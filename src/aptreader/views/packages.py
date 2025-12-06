@@ -1,23 +1,13 @@
 import reflex as rx
-import reflex_enterprise as rxe
 
 from aptreader.components.repo_select import repo_select
+from aptreader.models.packages import Package
 from aptreader.pages.packages import PackagesState
-from aptreader.states.repo_select import RepoSelectState
 
 
 def packages_filters() -> rx.Component:
     return rx.flex(
         repo_select(),
-        rx.text(
-            rx.cond(
-                RepoSelectState.current_repo,
-                "URL: " + RepoSelectState.current_repo.url,  # type: ignore
-                "",
-            ),
-            size="3",
-            color=rx.color("gray", 11),
-        ),
         rx.spacer(),
         rx.select(
             PackagesState.component_filter_options,
@@ -25,6 +15,7 @@ def packages_filters() -> rx.Component:
             label="Component",
             on_change=PackagesState.set_component_filter,
             width="200px",
+            min_width="200px",
         ),
         rx.select(
             PackagesState.architecture_filter_options,
@@ -32,6 +23,7 @@ def packages_filters() -> rx.Component:
             label="Architecture",
             on_change=PackagesState.set_architecture_filter,
             width="200px",
+            min_width="200px",
         ),
         rx.input(
             rx.input.slot(rx.icon("search")),
@@ -39,19 +31,15 @@ def packages_filters() -> rx.Component:
             value=PackagesState.search_value,
             on_change=PackagesState.set_search_value,
             width="280px",
+            min_width="280px",
         ),
         rx.badge(
-            rx.hstack(
-                rx.text(PackagesState.packages_count, weight="bold"),
-                rx.text(" shown (limit "),
-                rx.text(PackagesState.max_results),
-                rx.text(")"),
-                spacing="1",
-                align="center",
-            ),
+            rx.text(f"{PackagesState.packages_count} shown (limit {PackagesState.max_results})"),
             color_scheme="gray",
+            variant="outline",
             size="2",
         ),
+        direction="row",
         align="center",
         spacing="3",
         wrap="wrap",
@@ -59,33 +47,30 @@ def packages_filters() -> rx.Component:
     )
 
 
-def show_package(pkg: dict) -> rx.Component:
+def format_size(val: int | float | None) -> str:
+    if val is None:
+        return "-"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if val < 1024:
+            return f"{val:.1f} {unit}"
+        val /= 1024
+    return f"{val:.1f} PB"
+
+
+def show_package(pkg: Package) -> rx.Component:
     return rx.table.row(
-        rx.table.row_header_cell(rx.text(pkg.get("name", "-"), weight="bold")),
-        rx.table.cell(rx.text(pkg.get("version", "-"))),
-        rx.table.cell(rx.badge(pkg.get("component", "-"), color_scheme="blue", size="1")),
-        rx.table.cell(rx.badge(pkg.get("architecture", "-"), color_scheme="mint", size="1")),
-        rx.table.cell(
-            rx.text(
-                rxe.mantine.number_formatter(
-                    pkg.get("size"),
-                )
-            )
-        ),
-        rx.table.cell(
-            rx.text(
-                pkg.get("description", "-"),
-                size="2",
-                max_width="38ch",
-                white_space="normal",
-            )
-        ),
+        rx.table.row_header_cell(rx.text(pkg.name, weight="bold")),
+        rx.table.cell(rx.text(pkg.version, "-")),
+        rx.table.cell(rx.badge(pkg.components, color_scheme="blue", size="1")),
+        rx.table.cell(rx.badge(pkg.architectures, color_scheme="mint", size="1")),
+        rx.table.cell(rx.text(pkg.size_str, size="2")),
+        rx.table.cell(rx.text(pkg.description, size="2", max_width="38ch", white_space="normal")),
         rx.table.cell(
             rx.vstack(
-                rx.code(pkg.get("filename", ""), size="1", max_width="42ch"),
+                rx.code(pkg.filename, size="1", max_width="42ch"),
                 rx.cond(
-                    pkg.get("homepage"),
-                    rx.link("Homepage", href=pkg.get("homepage"), is_external=True, size="1"),
+                    pkg.homepage,
+                    rx.link("Homepage", href=pkg.homepage, is_external=True, size="1"),
                     rx.fragment(),
                 ),
                 spacing="1",

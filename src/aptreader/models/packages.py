@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import reflex as rx
+from pydantic import computed_field
 from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Column, DateTime, Field, Relationship
 
@@ -103,3 +104,16 @@ class Package(rx.Model, table=True):
         default_factory=lambda: datetime.now(tz=UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+    @computed_field
+    @property
+    def size_str(self) -> str:
+        """Get the size formatted as a human-readable string."""
+        if self.size is None:
+            return "-"
+        val = self.size
+        for unit in ["B", "KB", "MB", "GB", "TB"]:
+            if val < 1024:
+                return f"{val:.1f} {unit}"
+            val /= 1024
+        return f"{val:.1f} PB"

@@ -17,7 +17,7 @@ class RepoSelectState(rx.State):
     DEFAULT_PROPS: ClassVar[dict[str, Any]] = {
         "label": "Repository",
         "placeholder": "Select...",
-        "width": "10%",
+        "width": "100%",
     }
 
     @rx.event
