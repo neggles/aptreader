@@ -4,6 +4,7 @@ import logging
 
 import sqlalchemy as sa
 import wrapt
+from sqlalchemy.dialects.sqlite.aiosqlite import AsyncAdapt_aiosqlite_connection
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.event import listens_for
@@ -30,10 +31,29 @@ def on_engine_connect(
 ) -> None:
     """Event listener for synchronous engine connections."""
     try:
+        if not dbapi_connection:
+            return
+
         if "sqlite://" in DB_URL:
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA foreign_keys=ON;")
-            logger.debug("Enabled SQLite foreign key support.")
+            if isinstance(dbapi_connection, AsyncAdapt_aiosqlite_connection):
+                ac = dbapi_connection.isolation_level
+                dbapi_connection.isolation_level = None
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+                dbapi_connection.isolation_level = ac
+            else:
+                # the sqlite3 driver will not set PRAGMA foreign_keys if autocommit=False; set to True temporarily
+                ac = dbapi_connection.autocommit
+                dbapi_connection.autocommit = True
+
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
+                # restore previous autocommit setting
+                dbapi_connection.autocommit = ac
+        logger.debug(f"SQLite PRAGMA foreign_keys=ON set for connection {dbapi_connection!r}")
     except Exception as e:
         logger.exception(f"Error setting SQLite PRAGMA: {e}")
         raise e

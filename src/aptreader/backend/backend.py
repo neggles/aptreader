@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
 from math import floor
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -45,14 +44,16 @@ def _build_package_model(
     version = entry.get("Version")
     if not name or not version:
         return None
+    if not distribution.id or not component.id or not architecture.id:
+        return None
 
     return Package(
         name=name,
         version=version,
         section=entry.get("Section"),
         priority=entry.get("Priority"),
-        size=_safe_int(entry.get("Size")),
-        installed_size=_safe_int(entry.get("Installed-Size")),
+        size=entry.get("Size"),
+        installed_size=entry.get("Installed-Size"),
         filename=entry.get("Filename"),
         source=entry.get("Source"),
         maintainer=entry.get("Maintainer"),
@@ -64,10 +65,10 @@ def _build_package_model(
         checksum_sha256=entry.get("SHA256"),
         tags=entry.get("Tag"),
         raw_control=entry,
-        repository=distribution.repository,
-        distributions=[distribution],
-        components=[component],
-        architectures=[architecture],
+        repository_id=distribution.repository_id,
+        distribution_id=distribution.id,
+        component_id=component.id,
+        architecture_id=architecture.id,
     )
 
 
@@ -294,14 +295,11 @@ class AppState(rx.State):
                 await asyncio.sleep(0)
 
             # Save distributions to database
-            yield self._replace_repository_distributions(repo_id, results)
+            await self._replace_repository_distributions(repo_id, results)
 
             # Reload repositories to show updated timestamp
             async with self:
                 self.fetch_message = "Fetch complete."
-                self.load_repositories(False)
-            await asyncio.sleep(0)
-
             yield rx.toast.success(f"Successfully fetched {len(results)} distributions for {repo_name}")
 
         except Exception as e:
@@ -334,18 +332,23 @@ class AppState(rx.State):
             async with rx.asession() as session:
                 repo = await session.get_one(Repository, repo_id, with_for_update=True)
                 if not repo:
-                    yield rx.toast.error("Repository not found in database during save.")
-                    return
-                # Delete existing distributions for this repo
-                for dist in repo.distributions:
+                    return rx.toast.error("Repository not found in database during save.")
+
+                # Delete existing distributions
+                existing_dists = await session.exec(
+                    select(Distribution).where(Distribution.repository_id == repo_id)
+                )
+                for dist in existing_dists.all():
                     await session.delete(dist)
+                await session.flush()
 
                 # Add new distributions
                 new_dists = [
                     Distribution(
+                        name=dist_name,
                         raw=local_path.read_text(encoding="utf-8"),
-                        architectures=parsed_data.get("Architectures", "").split(),
-                        components=parsed_data.get("Components", "").split(),
+                        architecture_names=parsed_data.get("Architectures", "").split(),
+                        component_names=parsed_data.get("Components", "").split(),
                         date=parsed_data.get("Date"),
                         description=parsed_data.get("Description"),
                         origin=parsed_data.get("Origin", ""),
@@ -359,13 +362,13 @@ class AppState(rx.State):
                 session.add_all(new_dists)
 
                 await session.commit()
-                yield rx.toast.success(f"Distributions saved for repository '{repo.name}'")
+                return rx.toast.success(f"Distributions saved for repository '{repo.name}'")
         except NoResultFound:
             logger.exception(f"Could not find repository {repo_id}", stacklevel=2)
-            yield rx.toast.error(f"Could not find repository with ID {repo_id}")
+            return rx.toast.error(f"Could not find repository with ID {repo_id}")
         except Exception as e:
             logger.exception("Error saving distributions to database:", stacklevel=2)
-            yield rx.toast.error(f"Error saving distributions to database: {e}")
+            return rx.toast.error(f"Error saving distributions to database: {e}")
 
     @long_running_task
     @rx.event(background=True)
@@ -385,21 +388,22 @@ class AppState(rx.State):
                 )
                 return
             repo_url = repository.url
-            codename = distribution.codename
-            components = distribution.components or []
-            architectures = distribution.architectures or []
+            name = distribution.name
+            codename = distribution.codename or name
+            component_names = distribution.component_names or []
+            architecture_names = distribution.architecture_names or []
 
-        if not components or not architectures:
+        if not component_names or not architecture_names:
             logger.warning("Distribution missing components or architectures.")
             yield rx.toast.warning("Distribution metadata missing components/architectures.")
             return
 
         async with self:
-            targets = [(comp, arch) for comp in components for arch in architectures]
+            targets = [(comp, arch) for comp in component_names for arch in architecture_names]
             total_targets = len(targets)
             self.package_fetch_distribution_id = distribution_id
             self.package_fetch_progress = 0
-            self.package_fetch_message = f"Preparing package sync for {codename}"
+            self.package_fetch_message = f"Preparing package sync for {name}"
             self.is_fetching_packages = True
         await asyncio.sleep(0)
 
@@ -408,10 +412,10 @@ class AppState(rx.State):
         try:
             for comp_name, arch_name in targets:
                 async with self:
-                    self.package_fetch_message = f"Downloading {codename} {comp_name}/{arch_name}"
+                    self.package_fetch_message = f"Downloading {name} {comp_name}/{arch_name}"
                     await asyncio.sleep(0)
 
-                download_result = await download_packages_index(repo_url, codename, comp_name, arch_name)
+                download_result = await download_packages_index(repo_url, name, comp_name, arch_name)
                 if not download_result:
                     logger.info(f"No Packages file for {comp_name}/{arch_name}")
                     processed += 1
@@ -470,37 +474,57 @@ class AppState(rx.State):
     async def _get_or_create_component(
         self,
         session: AsyncSession,
-        distribution_id: int,
+        distribution: Distribution,
         component_name: str,
     ) -> Component:
+        """Get or create a Component model and link it to the distribution/repository.
+        This assumes you're holding the session context manager when you call it.
+        """
         component = await session.scalar(
             select(Component).where(
-                Component.distribution_id == distribution_id,
+                Component.repository_id == distribution.repository_id,
                 Component.name == component_name,
             )
         )
         if component:
-            return component
-        component = Component(name=component_name, distribution_id=distribution_id)
-        session.add(component)
+            if distribution not in component.distributions:
+                component.distributions.append(distribution)
+        else:
+            component = Component(
+                name=component_name, repository_id=distribution.repository_id, distributions=[distribution]
+            )
+            session.add(component)
+
+        await session.flush([component, distribution])
         return component
 
     async def _get_or_create_architecture(
         self,
         session: AsyncSession,
-        distribution_id: int,
+        distribution: Distribution,
         architecture_name: str,
     ) -> Architecture:
+        """Get or create an Architecture model and link it to the distribution/repository.
+        This assumes you're holding the session context manager when you call it.
+        """
         architecture = await session.scalar(
             select(Architecture).where(
-                Architecture.distribution_id == distribution_id,
+                Architecture.repository_id == distribution.repository_id,
                 Architecture.name == architecture_name,
             )
         )
         if architecture:
-            return architecture
-        architecture = Architecture(name=architecture_name, distribution_id=distribution_id)
-        session.add(architecture)
+            if distribution not in architecture.distributions:
+                architecture.distributions.append(distribution)
+        else:
+            architecture = Architecture(
+                name=architecture_name,
+                repository_id=distribution.repository_id,
+                distributions=[distribution],
+            )
+            session.add(architecture)
+
+        await session.flush([architecture, distribution])
         return architecture
 
     async def _replace_packages_for_target(
@@ -512,8 +536,8 @@ class AppState(rx.State):
     ):
         async with rx.asession() as session:
             distribution = await session.get_one(Distribution, distribution_id)
-            component = await self._get_or_create_component(session, distribution_id, component_name)
-            architecture = await self._get_or_create_architecture(session, distribution_id, architecture_name)
+            component = await self._get_or_create_component(session, distribution, component_name)
+            architecture = await self._get_or_create_architecture(session, distribution, architecture_name)
             await session.flush()
 
             idx = 0
@@ -526,13 +550,10 @@ class AppState(rx.State):
 
                 session.add(package)
                 new_count += 1
-                if idx % 100 == 0:
+                if idx % 10 == 0:
                     await session.flush()
                     yield new_count
 
-            now = datetime.now(tz=UTC)
-            component.last_fetched_at = now
-            architecture.last_fetched_at = now
             await session.commit()
             yield new_count
 

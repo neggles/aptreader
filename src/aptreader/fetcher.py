@@ -198,7 +198,7 @@ async def fetch_release_file(
 
 
 async def discover_distributions(repo_url: str) -> list[str]:
-    """Discover available distributions at a repository by probing common names.
+    """Discover available distributions at a repository.
 
     Args:
         repo_url: Base URL of the repository (e.g., https://archive.ubuntu.com/ubuntu/)
@@ -214,11 +214,10 @@ async def discover_distributions(repo_url: str) -> list[str]:
     async with httpx.AsyncClient(follow_redirects=True) as client:
         response = await client.get(listing_url)
         response.raise_for_status()
+        parser = _DirectoryListingParser()
+        parser.feed(response.text)
 
-    parser = _DirectoryListingParser()
-    parser.feed(response.text)
     entries = parser.get_entries()
-
     if not entries:
         candidates: list[str] = []
         for line in response.text.splitlines():

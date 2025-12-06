@@ -7,30 +7,30 @@ logger = logging.getLogger(__name__)
 
 
 @rx.ModelRegistry.register
-class PackageDistributionLink(SQLModel, table=True):
-    """Association table for many-to-many relationship between packages and distributions."""
+class DistributionArchitectureLink(SQLModel, table=True):
+    """Association table for many-to-many relationship between distributions and architectures."""
 
-    __table_args__ = (Index("ix_pkg_dist_distribution_package", "distribution_id", "package_id"),)
+    __table_args__ = (Index("ix_dist_arch_distribution_architecture", "distribution_id", "architecture_id"),)
 
-    package_id: int = Field(foreign_key="package.id", primary_key=True)
     distribution_id: int = Field(foreign_key="distribution.id", primary_key=True)
+    architecture_id: int = Field(foreign_key="architecture.id", primary_key=True)
 
 
 @rx.ModelRegistry.register
-class PackageComponentLink(SQLModel, table=True):
-    """Association table for many-to-many relationship between packages and components."""
+class DistributionComponentLink(SQLModel, table=True):
+    """Association table for many-to-many relationship between distributions and components."""
 
-    __table_args__ = (Index("ix_pkg_component_component_package", "component_id", "package_id"),)
+    __table_args__ = (Index("ix_dist_comp_distribution_component", "distribution_id", "component_id"),)
 
-    package_id: int = Field(foreign_key="package.id", primary_key=True)
+    distribution_id: int = Field(foreign_key="distribution.id", primary_key=True)
     component_id: int = Field(foreign_key="component.id", primary_key=True)
 
 
 @rx.ModelRegistry.register
-class PackageArchitectureLink(SQLModel, table=True):
-    """Association table for many-to-many relationship between packages and architectures."""
+class DistributionPackageLink(SQLModel, table=True):
+    """Association table for many-to-many relationship between distributions and packages."""
 
-    __table_args__ = (Index("ix_pkg_arch_architecture_package", "architecture_id", "package_id"),)
+    __table_args__ = (Index("ix_dist_pkg_distribution_package", "distribution_id", "package_id"),)
 
+    distribution_id: int = Field(foreign_key="distribution.id", primary_key=True)
     package_id: int = Field(foreign_key="package.id", primary_key=True)
-    architecture_id: int = Field(foreign_key="architecture.id", primary_key=True)

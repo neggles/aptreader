@@ -15,7 +15,7 @@ def show_repository(repo: Repository):
         rx.table.cell(repo.id, class_name="mono"),
         rx.table.row_header_cell(rx.link(repo.name, href=f"/distributions/{repo.id}")),
         rx.table.cell(repo.url),
-        rx.table.cell(repo.update_ts),
+        rx.table.cell(repo.last_fetched_at),
         rx.table.cell(repo.repo_distribution_count),
         rx.table.cell(
             rx.hstack(

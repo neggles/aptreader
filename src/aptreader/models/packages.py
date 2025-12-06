@@ -1,13 +1,14 @@
 """Models for distribution components, architectures, and packages."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import reflex as rx
-from pydantic import computed_field
-from sqlmodel import JSON, Column, DateTime, Field, Relationship, UniqueConstraint
+import sqlmodel as sm
+from pydantic import ByteSize, computed_field
+from sqlmodel import JSON, BigInteger, Field, Relationship, UniqueConstraint
 
-from aptreader.models.links import PackageArchitectureLink, PackageComponentLink, PackageDistributionLink
+from aptreader.models.links import DistributionArchitectureLink, DistributionComponentLink
 
 if TYPE_CHECKING:
     from aptreader.models.repository import Distribution, Repository
@@ -16,46 +17,38 @@ if TYPE_CHECKING:
 class Component(rx.Model, table=True):
     """APT component (e.g., main, universe) tied to a distribution."""
 
-    __table_args__ = (UniqueConstraint("distribution_id", "name", name="uq_component_distribution_name"),)
+    __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_component_distribution_name"),)
 
-    name: str = Field(index=True)
-    last_fetched_at: datetime | None = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True)),
-    )
-
-    distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
-    distribution: "Distribution" = Relationship(
-        back_populates="component_rows", sa_relationship_kwargs={"lazy": "selectin"}
-    )
-
-    packages: list["Package"] = Relationship(
+    name: str = Field(index=True, unique=True)
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
+    repository: "Repository" = Relationship(
         back_populates="components",
-        link_model=PackageComponentLink,
-        cascade_delete=True,
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    distributions: list["Distribution"] = Relationship(
+        back_populates="components",
+        link_model=DistributionComponentLink,
+        sa_relationship_kwargs={"lazy": "selectin"},
     )
 
 
 class Architecture(rx.Model, table=True):
     """APT architecture (e.g., amd64) available for a distribution."""
 
-    __table_args__ = (UniqueConstraint("distribution_id", "name", name="uq_architecture_distribution_name"),)
+    __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_architecture_distribution_name"),)
 
-    name: str = Field(index=True)
-    last_fetched_at: datetime | None = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True)),
-    )
-
-    distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
-    distribution: "Distribution" = Relationship(
-        back_populates="architecture_rows", sa_relationship_kwargs={"lazy": "selectin"}
-    )
-
-    packages: list["Package"] = Relationship(
+    name: str = Field(index=True, unique=True)
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
+    repository: "Repository" = Relationship(
         back_populates="architectures",
-        link_model=PackageArchitectureLink,
-        cascade_delete=True,
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    distributions: list["Distribution"] = Relationship(
+        back_populates="architectures",
+        link_model=DistributionArchitectureLink,
+        sa_relationship_kwargs={"lazy": "selectin"},
     )
 
 
@@ -63,15 +56,22 @@ class Package(rx.Model, table=True):
     """Stored metadata for a single package entry from Packages.gz."""
 
     __table_args__ = (
-        UniqueConstraint("repository_id", "name", "version", name="uq_package_repository_name_version"),
+        UniqueConstraint(
+            "distribution_id",
+            "component_id",
+            "architecture_id",
+            "name",
+            "version",
+            name="uq_package_distribution_component_architecture_name_version",
+        ),
     )
 
     name: str = Field(index=True)
     version: str = Field(index=True)
     section: str | None = None
     priority: str | None = None
-    size: int | None = None
-    installed_size: int | None = None
+    size: ByteSize | None = Field(default=None, sa_type=BigInteger)
+    installed_size: ByteSize | None = Field(default=None, sa_type=BigInteger)
     filename: str | None = None
     source: str | None = None
     maintainer: str | None = None
@@ -86,37 +86,40 @@ class Package(rx.Model, table=True):
 
     repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
-        back_populates="packages",
-        sa_relationship_kwargs={"lazy": "selectin"},
+        sa_relationship_kwargs={"lazy": "selectin"}, back_populates="packages"
     )
+    distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
+    distribution: "Distribution" = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"}, back_populates="packages"
+    )
+    component_id: int = Field(foreign_key="component.id", ondelete="CASCADE")
+    component: "Component" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
+    architecture_id: int = Field(foreign_key="architecture.id", ondelete="CASCADE")
+    architecture: "Architecture" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
 
-    distributions: list["Distribution"] = Relationship(
-        back_populates="packages",
-        link_model=PackageDistributionLink,
-    )
-    components: list["Component"] = Relationship(
-        back_populates="packages",
-        link_model=PackageComponentLink,
-    )
-    architectures: list["Architecture"] = Relationship(
-        back_populates="packages",
-        link_model=PackageArchitectureLink,
-    )
-
-    fetched_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=UTC),
-        sa_column=Column(DateTime(timezone=True), nullable=False),
+    last_fetched_at: datetime | None = Field(
+        default=None,
+        sa_column=sm.Column(
+            "last_fetched_at",
+            sm.DateTime(timezone=True),
+            server_default=sm.func.now(),
+            onupdate=sm.func.now(),
+            nullable=False,
+        ),
     )
 
     @computed_field
     @property
     def size_str(self) -> str:
-        """Get the size formatted as a human-readable string."""
+        """Package size formatted as a human-readable string."""
         if self.size is None:
             return "-"
-        val = self.size
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if val < 1024:
-                return f"{val:.1f} {unit}"
-            val /= 1024
-        return f"{val:.1f} PB"
+        return self.size.human_readable()
+
+    @computed_field
+    @property
+    def installed_size_str(self) -> str:
+        """Package size formatted as a human-readable string."""
+        if self.installed_size is None:
+            return "-"
+        return self.installed_size.human_readable()

@@ -1,19 +1,15 @@
 import logging
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import reflex as rx
 import sqlmodel as sm
 from dateutil.parser import parse as parse_date
 from pydantic import computed_field
-from sqlmodel import JSON, DateTime, Field, Relationship, UniqueConstraint, func, select
+from sqlmodel import JSON, Field, Relationship, UniqueConstraint, func, select
 
-if TYPE_CHECKING:
-    from aptreader.models.packages import Architecture, Component
+from aptreader.models import Architecture, Component, Package
 
-from aptreader.models import Package
-
-from .links import PackageDistributionLink
+from .links import DistributionArchitectureLink, DistributionComponentLink, DistributionPackageLink
 
 logger = logging.getLogger(__name__)
 
@@ -39,29 +35,50 @@ N_ORDERED_ARCHITECTURES = len(ORDERED_ARCHITECTURES)
 
 
 class Distribution(rx.Model, table=True):
-    __table_args__ = (
-        UniqueConstraint("repository_id", "codename", name="uq_distribution_repository_codename"),
-    )
+    __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_distribution_repository_name"),)
 
-    architectures: list[str] = Field(sa_type=JSON, default_factory=list)
-    components: list[str] = Field(sa_type=JSON, default_factory=list)
+    name: str = Field(index=True)
     date: str | None = Field(default=None)
     description: str | None = Field(default=None)
-    origin: str
-    suite: str
-    version: str
-    codename: str
+    origin: str | None = Field(default=None)
+    suite: str | None = Field(default=None)
+    version: str | None = Field(default=None)
+    codename: str | None = Field(default=None)
+    architecture_names: list[str] = Field(sa_type=JSON, default_factory=list)
+    component_names: list[str] = Field(sa_type=JSON, default_factory=list)
     raw: str | None = Field(default=None, repr=False)
 
-    repository_id: int = Field(default=None, foreign_key="repository.id", ondelete="CASCADE")
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
-        back_populates="distributions", sa_relationship_kwargs={"lazy": "selectin"}
+        back_populates="distributions",
+        sa_relationship_kwargs={"lazy": "selectin"},
     )
 
-    component_rows: list["Component"] = Relationship(back_populates="distribution", cascade_delete=True)
-    architecture_rows: list["Architecture"] = Relationship(back_populates="distribution", cascade_delete=True)
+    components: list["Component"] = Relationship(
+        back_populates="distributions",
+        link_model=DistributionComponentLink,
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+    architectures: list["Architecture"] = Relationship(
+        back_populates="distributions",
+        link_model=DistributionArchitectureLink,
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
     packages: list["Package"] = Relationship(
-        back_populates="distributions", link_model=PackageDistributionLink, cascade_delete=True
+        back_populates="distribution",
+        link_model=DistributionPackageLink,
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    last_fetched_at: datetime | None = Field(
+        default=None,
+        sa_column=sm.Column(
+            "last_fetched_at",
+            sm.DateTime(timezone=True),
+            server_default=sm.func.now(),
+            onupdate=sm.func.now(),
+            nullable=False,
+        ),
     )
 
     @computed_field
@@ -81,28 +98,28 @@ class Distribution(rx.Model, table=True):
     @property
     def format_components(self) -> list[str]:
         """Get the components sorted in a preferred order."""
-        not_in_ordered = sorted([c for c in self.components if c not in ORDERED_COMPONENTS])
+        not_in_ordered = sorted([c for c in self.component_names if c not in ORDERED_COMPONENTS])
 
         def sort_fn(c):
             if c in ORDERED_COMPONENTS:
                 return ORDERED_COMPONENTS.index(c)
             return N_ORDERED_COMPONENTS + not_in_ordered.index(c)
 
-        return sorted(self.components, key=sort_fn)
+        return sorted(self.component_names, key=sort_fn)
 
     @computed_field
     @property
     def format_architectures(self) -> list[str]:
         """Get the architectures sorted in a preferred order."""
 
-        not_in_ordered = sorted([c for c in self.architectures if c not in ORDERED_ARCHITECTURES])
+        not_in_ordered = sorted([c for c in self.architecture_names if c not in ORDERED_ARCHITECTURES])
 
         def sort_fn(c):
             if c in ORDERED_ARCHITECTURES:
                 return ORDERED_ARCHITECTURES.index(c)
             return N_ORDERED_ARCHITECTURES + not_in_ordered.index(c)
 
-        return sorted(self.architectures, key=sort_fn)
+        return sorted(self.architecture_names, key=sort_fn)
 
 
 class Repository(rx.Model, table=True):
@@ -110,19 +127,22 @@ class Repository(rx.Model, table=True):
 
     name: str = Field(index=True, unique=True)
     url: str = Field(index=True, unique=True)
-    update_ts: datetime = Field(
-        default=datetime.now(tz=UTC),
+
+    distributions: list["Distribution"] = Relationship(back_populates="repository", cascade_delete=True)
+    components: list["Component"] = Relationship(back_populates="repository", cascade_delete=True)
+    architectures: list["Architecture"] = Relationship(back_populates="repository", cascade_delete=True)
+    packages: list["Package"] = Relationship(back_populates="repository")
+
+    last_fetched_at: datetime | None = Field(
+        default=None,
         sa_column=sm.Column(
-            "update_ts",
-            DateTime(timezone=True),
+            "last_fetched_at",
+            sm.DateTime(timezone=True),
             server_default=sm.func.now(),
             onupdate=sm.func.now(),
             nullable=False,
         ),
     )
-
-    distributions: list["Distribution"] = Relationship(back_populates="repository", cascade_delete=True)
-    packages: list["Package"] = Relationship(back_populates="repository", cascade_delete=True)
 
     @computed_field
     @property
