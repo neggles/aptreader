@@ -3,7 +3,6 @@
 import reflex as rx
 
 from aptreader import styles
-from aptreader.backend.backend import AppState
 
 from .logo import logo
 

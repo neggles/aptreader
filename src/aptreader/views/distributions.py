@@ -4,8 +4,8 @@ import reflex as rx
 from reflex.constants.colors import COLORS
 
 from aptreader.backend.backend import AppState
-from aptreader.components.repo_select import repo_select
-from aptreader.models.repository import Distribution
+from aptreader.components.repo_select import RepoSelectState, repo_select
+from aptreader.models import Distribution
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def show_distribution(dist: Distribution):
                 dist.components,
                 rx.flex(
                     rx.foreach(
-                        dist.sorted_components,
+                        dist.format_components,
                         lambda comp: rx.badge(comp, color_scheme=component_to_color(comp)),
                     ),
                     spacing="2",
@@ -66,7 +66,7 @@ def show_distribution(dist: Distribution):
                 dist.architectures,
                 rx.flex(
                     rx.foreach(
-                        dist.sorted_architectures,
+                        dist.format_architectures,
                         lambda arch: rx.badge(arch, color_scheme=architecture_to_color(arch)),
                     ),
                     spacing="2",
@@ -77,9 +77,35 @@ def show_distribution(dist: Distribution):
         ),
         rx.table.cell(
             rx.text(
-                rx.cond(dist.date_str, dist.date_str, "-"),
+                rx.cond(dist.format_date, dist.format_date, "-"),
                 wrap="nowrap",
             )
+        ),
+        rx.table.cell(
+            rx.hstack(
+                rx.icon_button(
+                    rx.icon("package-plus", size=18),
+                    size="2",
+                    variant="soft",
+                    color_scheme="indigo",
+                    loading=rx.cond(AppState.package_fetch_distribution_id == dist.id, True, False),
+                    disabled=AppState.is_fetching_packages,
+                    on_click=rx.cond(
+                        dist.id is not None, AppState.fetch_distribution_packages(dist.id), rx.noop()
+                    ),
+                ),
+                rx.link(
+                    rx.icon_button(
+                        rx.icon("package-search", size=18),
+                        size="2",
+                        variant="surface",
+                        color_scheme="blue",
+                    ),
+                    href=f"/packages/{dist.id}" if dist.id is not None else "/packages",
+                ),
+                spacing="2",
+            ),
+            align="center",
         ),
         style={"_hover": {"bg": rx.color("gray", 3)}},
         align="center",
@@ -119,19 +145,12 @@ def distributions_header() -> rx.Component:
         repo_select(),
         rx.text(
             rx.cond(
-                AppState.current_repo,
-                "URL: " + AppState.current_repo.url,  # type: ignore
+                RepoSelectState.current_repo,
+                "URL: " + RepoSelectState.current_repo.url,  # type: ignore
                 "",
             ),
             size="3",
             color=rx.color("gray", 11),
-        ),
-        rx.spacer(),
-        rx.button(
-            rx.icon("arrow-left"),
-            rx.text("Back to Repositories", size="3"),
-            size="3",
-            on_click=rx.redirect("/"),
         ),
         width="100%",
         align="center",
@@ -161,6 +180,44 @@ def distributions_table() -> rx.Component:
             rx.vstack(
                 distributions_header(),
                 rx.cond(
+                    AppState.is_fetching_packages,
+                    rx.callout(
+                        rx.hstack(
+                            rx.spinner(size="2"),
+                            rx.vstack(
+                                rx.text(
+                                    rx.cond(
+                                        AppState.package_fetch_message,
+                                        AppState.package_fetch_message,
+                                        "Fetching packages...",
+                                    )
+                                ),
+                                rx.text(
+                                    rx.cond(
+                                        AppState.package_fetch_distribution_id != -1,
+                                        f"Distribution ID {AppState.package_fetch_distribution_id}",
+                                        "",
+                                    ),
+                                    size="2",
+                                    color=rx.color("gray", 10),
+                                ),
+                                spacing="1",
+                                align="start",
+                            ),
+                            rx.progress(
+                                value=AppState.package_fetch_progress,
+                                size="1",
+                                width="160px",
+                            ),
+                            spacing="3",
+                            align="center",
+                        ),
+                        color_scheme="indigo",
+                        size="2",
+                    ),
+                    rx.fragment(),
+                ),
+                rx.cond(
                     AppState.distributions,
                     rx.table.root(
                         rx.table.header(
@@ -172,6 +229,7 @@ def distributions_table() -> rx.Component:
                                 _header_cell("Components", "package"),
                                 _header_cell("Architectures", "cpu"),
                                 _header_cell("Released", "calendar"),
+                                _header_cell("Packages", "package-search"),
                             ),
                         ),
                         rx.table.body(

@@ -1,14 +1,16 @@
 """Repository fetching and distribution discovery for APT repositories."""
 
-import datetime
+import gzip
 import logging
 from enum import Enum
 from html.parser import HTMLParser
 from os import utime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 from urllib.parse import urljoin, urlparse
 
+import aiofiles
+import aiogzip
 import httpx
 from dateutil.parser import parse as parse_date
 from debian import deb822
@@ -256,3 +258,80 @@ async def fetch_distributions(
         except Exception as e:
             logger.error(f"Error fetching Release file for distribution '{dist}': {e}")
             continue
+
+
+def build_packages_url(
+    repo_url: str, dist: str, component: str, architecture: str, suffix: str = "Packages.gz"
+) -> str:
+    """Construct a Packages index URL for a component + architecture."""
+
+    repo_prefix = repo_url if repo_url.endswith("/") else f"{repo_url}/"
+    rel_path = f"dists/{dist}/{component}/binary-{architecture}/{suffix}"
+    return urljoin(repo_prefix, rel_path)
+
+
+async def download_packages_index(
+    repo_url: str,
+    dist: str,
+    component: str,
+    architecture: str,
+    skip_mode: SkipMode = SkipMode.CHECK,
+) -> tuple[str, Path] | None:
+    """Download Packages[.gz] for the given component/architecture tuple."""
+
+    for suffix in ("Packages.gz", "Packages"):
+        packages_url = build_packages_url(repo_url, dist, component, architecture, suffix)
+        local_path = url_to_local_path(packages_url)
+        success = await download_file(packages_url, local_path, skip_mode=skip_mode)
+        if success:
+            return packages_url, local_path
+    return None
+
+
+def iter_packages_entries(local_path: Path) -> Iterator[dict]:
+    """Stream package entries from a Packages or Packages.gz file."""
+
+    def _open_text_stream():
+        if local_path.suffix == ".gz":
+            try:
+                return gzip.open(local_path, "rt", encoding="utf-8", errors="ignore")
+            except OSError:
+                logger.warning("Falling back to plain-text read for %s", local_path)
+        return local_path.open("rt", encoding="utf-8", errors="ignore")
+
+    with _open_text_stream() as handle:
+        for paragraph in deb822.Packages.iter_paragraphs(handle):
+            yield dict(paragraph)
+
+
+async def iter_packages_entries_async(local_path: Path):
+    """Asynchronously stream package entries from a Packages or Packages.gz file."""
+
+    async def _open_text_stream():
+        if local_path.suffix == ".gz":
+            try:
+                async with aiogzip.AsyncGzipTextFile(local_path, encoding="utf-8", errors="ignore") as f:
+                    async for line in f:
+                        yield line
+                return
+            except OSError:
+                logger.info("Falling back to plain-text read for %s", local_path, stacklevel=2)
+        async with aiofiles.open(local_path, "rt", encoding="utf-8", errors="ignore") as f:
+            async for line in f:
+                yield line
+
+    handle = _open_text_stream()
+    paragraph_lines = []
+    async for line in handle:
+        if line.strip() == "":
+            if paragraph_lines:
+                paragraph_text = "".join(paragraph_lines)
+                paragraph = deb822.Deb822(paragraph_text.splitlines())
+                yield dict(paragraph)
+                paragraph_lines = []
+        else:
+            paragraph_lines.append(line)
+    if paragraph_lines:
+        paragraph_text = "".join(paragraph_lines)
+        paragraph = deb822.Deb822(paragraph_text.splitlines())
+        yield dict(paragraph)

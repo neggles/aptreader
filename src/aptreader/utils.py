@@ -1,5 +1,8 @@
+import asyncio
 import datetime
+import inspect
 import logging
+from functools import wraps
 
 from dateutil.parser import parse as parse_date
 
@@ -21,3 +24,50 @@ def try_parse_date(date_str: str | None) -> datetime.datetime | None:
     except Exception as e:
         logger.debug(f"Failed to parse date '{date_str}': {e}")
         return None
+
+
+def long_running_task(func):
+    """Decorator to mark a function as a long-running task.
+
+    This hoists the try/catch for asyncio.CancelledError out of the wrapped function,
+    which saves a level of indentation and makes the code cleaner.
+
+    Args:
+        func: The function to decorate.
+    Returns:
+        The decorated function.
+
+    """
+    is_async_gen = inspect.isasyncgenfunction(func)
+    is_coro = inspect.iscoroutinefunction(func)
+
+    if not is_async_gen and not is_coro:
+        raise ValueError("long_running_task only supports async functions.")
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if is_async_gen:
+
+            async def inner_gen():
+                try:
+                    async for item in func(*args, **kwargs):
+                        yield item
+                except asyncio.CancelledError:
+                    logger.debug(f"Long-running task {func.__name__} was cancelled.")
+                    raise
+
+            return inner_gen()
+        elif is_coro:
+            try:
+
+                async def inner_coro():
+                    return await func(*args, **kwargs)
+            except asyncio.CancelledError:
+                logger.debug(f"Long-running task {func.__name__} was cancelled.")
+                raise
+
+            return inner_coro()
+        else:
+            raise ValueError("long_running_task decorator can only be applied to async functions.")
+
+    return wrapper

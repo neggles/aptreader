@@ -1,17 +1,17 @@
 """Distributions page for viewing repository distributions."""
 
-import logging
-
 import reflex as rx
 
 from aptreader.backend.backend import AppState
 from aptreader.templates import template
 from aptreader.views.distributions import distributions_table
 
-logger = logging.getLogger(__name__)
 
-
-@template(route="/distributions/[[...splat]]", title="Distributions", on_load=AppState.load_repositories)
+@template(
+    route="/distributions/[[...splat]]",
+    title="Distributions",
+    on_load=AppState.load_repositories,
+)
 def distributions() -> rx.Component:
     """Distributions page component."""
 

@@ -1,17 +1,14 @@
 """Models for distribution components, architectures, and packages."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import reflex as rx
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Column, DateTime, Field, Relationship
 
-if TYPE_CHECKING:  # pragma: no cover
-    from aptreader.models.repository import Distribution
-
+if TYPE_CHECKING:
+    from aptreader.models.repository import Distribution, Repository
 from .links import PackageArchitectureLink, PackageComponentLink, PackageDistributionLink
 
 
@@ -27,9 +24,14 @@ class Component(rx.Model, table=True):
     )
 
     distribution_id: int = Field(foreign_key="distribution.id")
-    distribution: "Distribution" = Relationship(back_populates="component_rows")
+    distribution: "Distribution" = Relationship(
+        back_populates="component_rows", sa_relationship_kwargs={"lazy": "selectin"}
+    )
 
-    packages: list = Relationship(back_populates="component", link_model=PackageComponentLink)
+    packages: list["Package"] = Relationship(
+        back_populates="components",
+        link_model=PackageComponentLink,
+    )
 
 
 class Architecture(rx.Model, table=True):
@@ -44,18 +46,20 @@ class Architecture(rx.Model, table=True):
     )
 
     distribution_id: int = Field(foreign_key="distribution.id")
-    distribution: "Distribution" = Relationship(back_populates="architecture_rows")
+    distribution: "Distribution" = Relationship(
+        back_populates="architecture_rows", sa_relationship_kwargs={"lazy": "selectin"}
+    )
 
-    packages: list = Relationship(back_populates="architecture", link_model=PackageArchitectureLink)
+    packages: list["Package"] = Relationship(
+        back_populates="architectures",
+        link_model=PackageArchitectureLink,
+    )
 
 
 class Package(rx.Model, table=True):
     """Stored metadata for a single package entry from Packages.gz."""
 
-    __table_args__ = (
-        UniqueConstraint("distribution_id", "component_id", "architecture_id", "name", "version"),
-        Index("ix_package_component_arch", "component_id", "architecture_id"),
-    )
+    __table_args__ = (UniqueConstraint("name", "version", name="uq_name_version"),)
 
     name: str = Field(index=True)
     version: str = Field(index=True)
@@ -73,11 +77,16 @@ class Package(rx.Model, table=True):
     checksum_sha1: str | None = None
     checksum_sha256: str | None = None
     tags: str | None = None
-    raw_control: dict | None = Field(sa_type=JSON, default=None)
+    raw_control: dict | None = Field(
+        sa_type=JSON,
+        default=None,
+    )
 
-    distribution_id: int = Field(foreign_key="distribution.id")
-    component_id: int = Field(foreign_key="component.id")
-    architecture_id: int = Field(foreign_key="architecture.id")
+    repository_id: int = Field(default=None, foreign_key="repository.id")
+    repository: "Repository" = Relationship(
+        back_populates="packages",
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
 
     distributions: list["Distribution"] = Relationship(
         back_populates="packages",

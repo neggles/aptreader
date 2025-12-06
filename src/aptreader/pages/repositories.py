@@ -2,15 +2,8 @@
 
 import reflex as rx
 
-from aptreader.backend.backend import AppState
 from aptreader.templates import template
 from aptreader.views.repositories import repositories_table
-
-
-class RepositoriesState(rx.State):
-    """State for the repositories page."""
-
-    pass
 
 
 @template(route="/", title="Repositories")

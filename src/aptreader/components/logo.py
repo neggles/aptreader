@@ -8,11 +8,9 @@ def logo() -> rx.Component:
         rx.Component: The logo component.
     """
     return rx.hstack(
-        rx.color_mode_cond(
-            rx.image(src="/package-dark.svg", height="1.5em"),
-            rx.image(src="/package-light.svg", height="1.5em"),
-        ),
-        rx.text("aptreader", size="4", weight="bold"),
+        rx.icon("package"),
+        rx.text("aptreader", weight="bold"),
         align="center",
+        justify="between",
         spacing="2",
     )

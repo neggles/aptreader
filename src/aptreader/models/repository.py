@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -10,8 +8,10 @@ from dateutil.parser import parse as parse_date
 from pydantic import computed_field
 from sqlmodel import JSON, DateTime, Field, Relationship, func, select
 
-if TYPE_CHECKING:  # pragma: no cover
-    from aptreader.models.packages import Architecture, Component, Package
+if TYPE_CHECKING:
+    from aptreader.models.packages import Architecture, Component
+
+from aptreader.models import Package
 
 from .links import PackageDistributionLink
 
@@ -39,7 +39,6 @@ N_ORDERED_ARCHITECTURES = len(ORDERED_ARCHITECTURES)
 
 
 class Distribution(rx.Model, table=True):
-    raw: str | None = Field(default=None)
     architectures: list[str] = Field(sa_type=JSON, default_factory=list)
     components: list[str] = Field(sa_type=JSON, default_factory=list)
     date: str | None = Field(default=None)
@@ -48,27 +47,22 @@ class Distribution(rx.Model, table=True):
     suite: str
     version: str
     codename: str
+    raw: str | None = Field(default=None, repr=False)
 
     repository_id: int = Field(default=None, foreign_key="repository.id")
-    repository: "Repository" = Relationship(back_populates="distributions")
+    repository: "Repository" = Relationship(
+        back_populates="distributions", sa_relationship_kwargs={"lazy": "selectin"}
+    )
 
-    component_rows: list["Component"] = Relationship(
-        back_populates="distribution",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
-    )
-    architecture_rows: list["Architecture"] = Relationship(
-        back_populates="distribution",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
-    )
+    component_rows: list["Component"] = Relationship(back_populates="distribution")
+    architecture_rows: list["Architecture"] = Relationship(back_populates="distribution")
     packages: list["Package"] = Relationship(
-        back_populates="distribution",
-        link_model=PackageDistributionLink,
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        back_populates="distributions", link_model=PackageDistributionLink
     )
 
     @computed_field
     @property
-    def date_str(self) -> str | None:
+    def format_date(self) -> str | None:
         """Get the parsed date as a datetime object."""
         if self.date is None:
             return None
@@ -81,7 +75,7 @@ class Distribution(rx.Model, table=True):
 
     @computed_field
     @property
-    def sorted_components(self) -> list[str]:
+    def format_components(self) -> list[str]:
         """Get the components sorted in a preferred order."""
         not_in_ordered = sorted([c for c in self.components if c not in ORDERED_COMPONENTS])
 
@@ -94,7 +88,7 @@ class Distribution(rx.Model, table=True):
 
     @computed_field
     @property
-    def sorted_architectures(self) -> list[str]:
+    def format_architectures(self) -> list[str]:
         """Get the architectures sorted in a preferred order."""
 
         not_in_ordered = sorted([c for c in self.architectures if c not in ORDERED_ARCHITECTURES])
@@ -124,6 +118,7 @@ class Repository(rx.Model, table=True):
     )
 
     distributions: list["Distribution"] = Relationship(back_populates="repository", cascade_delete=True)
+    packages: list["Package"] = Relationship(back_populates="repository", cascade_delete=True)
 
     @computed_field
     @property
@@ -131,5 +126,14 @@ class Repository(rx.Model, table=True):
         """Get the number of distributions for this repository."""
         with rx.session() as session:
             q = select(func.count()).select_from(Distribution).where(Distribution.repository_id == self.id)
-            count = session.exec(q).one_or_none()
+            count = session.scalar(q)
+            return count or 0
+
+    @computed_field
+    @property
+    def package_count(self) -> int:
+        """Get the number of packages for this repository."""
+        with rx.session() as session:
+            q = select(func.count()).select_from(Package).where(Package.repository_id == self.id)
+            count = session.scalar(q)
             return count if count is not None else 0

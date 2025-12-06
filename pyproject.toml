@@ -8,6 +8,9 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "aiofiles>=25.1.0",
+    "aiogzip>=1.1.0",
+    "aiosqlite>=0.21.0",
     "httpx>=0.28.1",
     "pandas>=2.3.3",
     "pydantic>=2.12.5",
@@ -28,6 +31,8 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "ipython>=9.8.0",
+    "ipywidgets>=8.1.8",
     "ruff>=0.14.7",
 ]
 

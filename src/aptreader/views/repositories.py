@@ -2,7 +2,7 @@ import reflex as rx
 
 from aptreader.backend.backend import AppState
 from aptreader.components.form_field import form_field
-from aptreader.models.repository import Repository
+from aptreader.models import Repository
 
 button_size = "3"
 
