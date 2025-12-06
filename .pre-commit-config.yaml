@@ -44,4 +44,3 @@ repos:
           - --force
           - --keep-updates
         files: ^(custom_components|scripts)/.+\.py$
-  #
