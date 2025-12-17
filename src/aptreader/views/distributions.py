@@ -75,11 +75,22 @@ def show_distribution(dist: Distribution):
                 "-",
             ),
         ),
+        rx.table.cell(rx.text(f"{dist.package_count}", size="2")),
         rx.table.cell(
             rx.text(
                 rx.cond(dist.format_date, dist.format_date, "-"),
                 wrap="nowrap",
             )
+        ),
+        rx.table.cell(
+            rx.text(
+                rx.cond(
+                    dist.last_fetched_at,
+                    dist.format_last_fetched_at,
+                    "-",
+                ),
+                wrap="nowrap",
+            ),
         ),
         rx.table.cell(
             rx.hstack(
@@ -195,6 +206,8 @@ def distributions_table() -> rx.Component:
                         ),
                         color_scheme="indigo",
                         size="2",
+                        width="25%",
+                        min_width="400px",
                     ),
                     rx.fragment(),
                 ),
@@ -209,8 +222,10 @@ def distributions_table() -> rx.Component:
                                 _header_cell("Version", "hash"),
                                 _header_cell("Components", "package"),
                                 _header_cell("Architectures", "cpu"),
+                                _header_cell("Package count", "boxes"),
                                 _header_cell("Released", "calendar"),
-                                _header_cell("Packages", "package-search"),
+                                _header_cell("Last Fetched", "clock"),
+                                _header_cell("Actions", "package-search"),
                             ),
                         ),
                         rx.table.body(

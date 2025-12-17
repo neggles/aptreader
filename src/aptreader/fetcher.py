@@ -6,7 +6,7 @@ from enum import Enum
 from html.parser import HTMLParser
 from os import utime
 from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 from urllib.parse import urljoin, urlparse
 
 import aiofiles
@@ -314,7 +314,7 @@ async def iter_packages_entries_async(local_path: Path):
                 return
             except OSError:
                 logger.info("Falling back to plain-text read for %s", local_path, stacklevel=2)
-        async with aiofiles.open(local_path, "rt", encoding="utf-8", errors="ignore") as f:
+        async with aiofiles.open(local_path, encoding="utf-8", errors="ignore") as f:
             async for line in f:
                 yield line
 

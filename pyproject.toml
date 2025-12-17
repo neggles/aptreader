@@ -45,13 +45,23 @@ target-version = "py313"
 
 # Add rules to ban exec/eval
 [tool.ruff.lint]
-# 1. Enable flake8-bugbear (`B`) rules, in addition to the defaults.
-select = ["E4", "E7", "E9", "F", "B"]
+select = [
+    "E4",  # ruff defaults, pycodestyle errors
+    "E7",  # ^^
+    "E9",  # ^^
+    "F",   # ruff defaults, pyflakes rules
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade rules
+    "PTH", # flake8-use-pathlib
+]
 ignore = [
+    "B008", # Do not warn about function calls in default arguments. disnake uses this for slash commands.
     "E501", # line too long (handled by line-length)
     "B905", # zip without explicit strict=
 ]
-unfixable = ["B"]
+unfixable = [
+    "B", # flake8-bugbear autofixes can be unsafe, so disable those autofixes
+]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402"]

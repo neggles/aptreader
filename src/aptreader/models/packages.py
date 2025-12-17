@@ -82,16 +82,19 @@ class Package(rx.Model, table=True):
     checksum_sha1: str | None = None
     checksum_sha256: str | None = None
     tags: str | None = None
-    raw_control: dict | None = Field(default=None, sa_type=JSON)
+    raw_control: dict | None = Field(default=None, sa_type=JSON, repr=False)
 
     repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
-        sa_relationship_kwargs={"lazy": "selectin"}, back_populates="packages"
+        back_populates="packages",
+        sa_relationship_kwargs={"lazy": "selectin"},
     )
     distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
     distribution: "Distribution" = Relationship(
-        sa_relationship_kwargs={"lazy": "selectin"}, back_populates="packages"
+        back_populates="packages",
+        sa_relationship_kwargs={"lazy": "selectin"},
     )
+
     component_id: int = Field(foreign_key="component.id", ondelete="CASCADE")
     component: "Component" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
     architecture_id: int = Field(foreign_key="architecture.id", ondelete="CASCADE")

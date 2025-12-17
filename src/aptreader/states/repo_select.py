@@ -76,7 +76,9 @@ class RepoSelectState(rx.State):
         app_state.current_repo = self.current_repo
 
         split_route = app_state.router.url.path.rsplit("/", 1)
-        if split_route[-1].isdigit() and split_route[-1] != str(repo.id):
+        if len(split_route) == 1:
+            return rx.redirect(f"{split_route[0]}/{repo.id}")
+        elif split_route[-1].isdigit() and split_route[-1] != str(repo.id):
             return [
                 rx.redirect(f"{split_route[0]}/{repo.id}"),
                 rx.toast.info(f"Selected repository: {repo.name}"),

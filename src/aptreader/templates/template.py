@@ -1,7 +1,7 @@
 # pyright: reportArgumentType=false
 """Common templates used between pages in the app."""
 
-from typing import Callable
+from collections.abc import Callable
 
 import reflex as rx
 

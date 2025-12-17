@@ -88,10 +88,22 @@ class Distribution(rx.Model, table=True):
         if self.date is None:
             return None
         try:
-            update_time = parse_date(self.date)
-            return update_time.strftime("%Y-%m-%d %H:%M:%S")
+            date_val = parse_date(self.date)
+            return date_val.strftime("%Y-%m-%d %H:%M:%S")
         except (ValueError, TypeError) as e:
             logger.debug(f"Failed to parse date '{self.date}': {e}")
+            return None
+
+    @computed_field
+    @property
+    def format_last_fetched_at(self) -> str | None:
+        """Get the parsed date as a datetime object."""
+        if self.last_fetched_at is None:
+            return None
+        try:
+            return self.last_fetched_at.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError) as e:
+            logger.debug(f"Failed to parse date '{self.last_fetched_at}': {e}")
             return None
 
     @computed_field
@@ -120,6 +132,19 @@ class Distribution(rx.Model, table=True):
             return N_ORDERED_ARCHITECTURES + not_in_ordered.index(c)
 
         return sorted(self.architecture_names, key=sort_fn)
+
+    @computed_field
+    @property
+    def package_count(self) -> int:
+        """Get the number of packages for this distribution."""
+        with rx.session() as session:
+            q = (
+                select(func.count())
+                .select_from(Package)
+                .where(Package.repository_id == self.repository_id, Package.distribution_id == self.id)
+            )
+            count = session.scalar(q)
+            return count if count is not None else 0
 
 
 class Repository(rx.Model, table=True):

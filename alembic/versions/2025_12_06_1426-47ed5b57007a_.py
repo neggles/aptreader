@@ -1,4 +1,5 @@
-"""empty message
+"""
+Message: empty message
 
 Revision ID: 47ed5b57007a
 Revises:
@@ -6,7 +7,7 @@ Create Date: 2025-12-06 14:26:25.498731+00:00
 
 """
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 import sqlmodel as sm

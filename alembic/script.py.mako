@@ -1,15 +1,17 @@
-"""${message}
+"""
+Message: ${message}
 
 Revision ID: ${up_revision}
 Revises: ${down_revision | comma,n}
 Create Date: ${create_date}
 
 """
-from typing import Sequence
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 import sqlmodel as sm
+from alembic import op
 ${imports if imports else ""}
 
 # revision identifiers, used by Alembic.

@@ -1,13 +1,16 @@
 import asyncio
+import datetime
 import logging
 from math import floor
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 import reflex as rx
 import sqlmodel as sm
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 from sqlmodel import func, select
 
 from aptreader.fetcher import (
@@ -69,6 +72,7 @@ def _build_package_model(
         distribution_id=distribution.id,
         component_id=component.id,
         architecture_id=architecture.id,
+        last_fetched_at=datetime.datetime.now(tz=datetime.UTC),
     )
 
 
@@ -356,6 +360,7 @@ class AppState(rx.State):
                         version=parsed_data.get("Version", ""),
                         codename=parsed_data.get("Codename", dist_name),
                         repository_id=repo_id,
+                        last_fetched_at=datetime.datetime.fromtimestamp(0, tz=datetime.UTC),
                     )
                     for dist_name, local_path, parsed_data in distributions
                 ]
@@ -435,7 +440,7 @@ class AppState(rx.State):
                     ):
                         async with self:
                             self.package_fetch_message = (
-                                f"Imported {count} new packages for {comp_name}/{arch_name}"
+                                f"Imported {count} packages in {comp_name}/{arch_name}"
                             )
                         new_count = count
                         await asyncio.sleep(0)
@@ -493,9 +498,9 @@ class AppState(rx.State):
             component = Component(
                 name=component_name, repository_id=distribution.repository_id, distributions=[distribution]
             )
-            session.add(component)
 
-        await session.flush([component, distribution])
+        session.add(component)
+        await session.flush()
         return component
 
     async def _get_or_create_architecture(
@@ -540,22 +545,47 @@ class AppState(rx.State):
             architecture = await self._get_or_create_architecture(session, distribution, architecture_name)
             await session.flush()
 
+            query = (
+                select(Package)
+                .where(
+                    Package.distribution == distribution,
+                    Package.component == component,
+                    Package.architecture == architecture,
+                    Package.name == sm.bindparam("name"),
+                    Package.version == sm.bindparam("version"),
+                )
+                .options(load_only(Package.id, Package.name, Package.version))  # type: ignore
+            )
+
             idx = 0
-            new_count = 0
+            updated = []
             async for entry in entries:
-                package = _build_package_model(entry, distribution, component, architecture)
                 idx += 1
-                if not package:
-                    continue
+                name = entry.get("Package")
+                version = entry.get("Version")
 
-                session.add(package)
-                new_count += 1
-                if idx % 10 == 0:
+                package = await session.scalar(query, dict(name=name, version=version))
+                if package:
+                    package.last_fetched_at = datetime.datetime.now(tz=datetime.UTC)
+                else:
+                    package = _build_package_model(entry, distribution, component, architecture)
+
+                if package:
+                    updated.append(package)
+
+                if idx % 100 == 0:
+                    session.add_all(updated)
                     await session.flush()
-                    yield new_count
+                    yield idx
+                    updated = []
+            else:
+                session.add_all(updated)
+                await session.flush()
+                updated = None
 
+            distribution.last_fetched_at = datetime.datetime.now(tz=datetime.UTC)
             await session.commit()
-            yield new_count
+            yield idx
 
     @rx.var(cache=True)
     def distributions(self) -> list[Distribution]:
