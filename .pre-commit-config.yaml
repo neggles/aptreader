@@ -1,3 +1,4 @@
+---
 # See https://pre-commit.com for more information
 ci:
   autofix_prs: true
