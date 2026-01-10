@@ -1,12 +1,13 @@
 """Repository fetching and distribution discovery for APT repositories."""
 
+import asyncio
 import gzip
 import logging
+from collections.abc import AsyncIterator, Iterator
 from enum import Enum
 from html.parser import HTMLParser
 from os import utime
 from pathlib import Path
-from collections.abc import Iterator
 from urllib.parse import urljoin, urlparse
 
 import aiofiles
@@ -161,7 +162,7 @@ async def download_file(
 async def fetch_release_file(
     repo_url: str,
     dist: str,
-) -> tuple[Path | None, dict | None]:
+) -> tuple[str, Path | None, dict | None]:
     """Download and parse a Release file for a distribution.
 
     Args:
@@ -169,7 +170,9 @@ async def fetch_release_file(
         dist: Distribution name (e.g., "jammy")
 
     Returns:
-        Tuple of (local_path, parsed_data) or (None, None) if failed
+        Tuple of (dist_name, local_path, parsed_data) on success
+        Tuple of (dist_name, local_path, None) if parsing failed
+        Tuple of (dist_name, None, None) if download failed
     """
     if not repo_url.endswith("/"):
         repo_url += "/"
@@ -180,7 +183,7 @@ async def fetch_release_file(
     # Download the file
     success = await download_file(release_url, local_path)
     if not success:
-        return None, None
+        return dist, None, None
 
     # Parse the Release file
     try:
@@ -190,11 +193,11 @@ async def fetch_release_file(
         # Convert to dict for easier access
         parsed = dict(release_data)
         logger.debug(f"Parsed Release file for {dist}: {parsed.get('Codename', dist)}")
-        return local_path, parsed
+        return dist, local_path, parsed
 
-    except Exception as e:
-        logger.error(f"Failed to parse Release file for {dist}: {e}")
-        return local_path, None
+    except Exception:
+        logger.exception(f"Failed to parse downloaded Release file for {dist}")
+        return dist, local_path, None
 
 
 async def discover_distributions(repo_url: str) -> list[str]:
@@ -211,7 +214,7 @@ async def discover_distributions(repo_url: str) -> list[str]:
         repo_url += "/"
 
     listing_url = urljoin(repo_url, "dists/")
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
         response = await client.get(listing_url)
         response.raise_for_status()
         parser = _DirectoryListingParser()
@@ -236,7 +239,7 @@ async def discover_distributions(repo_url: str) -> list[str]:
 async def fetch_distributions(
     repo_url: str,
     distributions: list[str] | None = None,
-):
+) -> AsyncIterator[tuple[str, Path, dict]]:
     """Discover and fetch Release files for all distributions at a repository.
 
     Args:
@@ -248,13 +251,16 @@ async def fetch_distributions(
     if distributions is None:
         distributions = await discover_distributions(repo_url)
 
-    for dist in distributions:
+    loop = asyncio.get_running_loop()
+    tasks = [loop.create_task(fetch_release_file(repo_url, dist)) for dist in distributions]
+    async for task in asyncio.as_completed(tasks):
+        dist = "Unknown"
         try:
-            local_path, parsed_data = await fetch_release_file(repo_url, dist)
+            dist, local_path, parsed_data = await task
             if local_path and parsed_data:
                 yield (dist, local_path, parsed_data)
-        except Exception as e:
-            logger.error(f"Error fetching Release file for distribution '{dist}': {e}")
+        except Exception:
+            logger.exception(f"Error fetching Release file for distribution '{dist}'")
             continue
 
 
@@ -302,10 +308,10 @@ def iter_packages_entries(local_path: Path) -> Iterator[dict]:
             yield dict(paragraph)
 
 
-async def iter_packages_entries_async(local_path: Path):
+async def iter_packages_entries_async(local_path: Path) -> AsyncIterator[dict]:
     """Asynchronously stream package entries from a Packages or Packages.gz file."""
 
-    async def _open_text_stream():
+    async def _open_text_stream() -> AsyncIterator[str]:
         if local_path.suffix == ".gz":
             try:
                 async with aiogzip.AsyncGzipTextFile(local_path, encoding="utf-8", errors="ignore") as f:

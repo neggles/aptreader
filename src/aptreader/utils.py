@@ -71,3 +71,36 @@ def long_running_task(func):
             raise ValueError("long_running_task decorator can only be applied to async functions.")
 
     return wrapper
+
+
+def stringify_size(num: int | float, decimal: bool = False, separator: str = "") -> str:
+    """Converts a byte size to a human readable string.
+
+    Args:
+        num: The byte size to convert.
+        decimal: If True, use decimal units (e.g. 1000 bytes per KB). If False, use binary units
+            (e.g. 1024 bytes per KiB).
+        separator: A string used to split the value and unit. Defaults to an empty string ('').
+
+    Returns:
+        A human readable string representation of the byte size.
+    """
+    if decimal:
+        divisor = 1000
+        units = "B", "KB", "MB", "GB", "TB", "PB"
+        final_unit = "EB"
+    else:
+        divisor = 1024
+        units = "B", "KiB", "MiB", "GiB", "TiB", "PiB"
+        final_unit = "EiB"
+
+    num = float(num)
+    for unit in units:
+        if abs(num) < divisor:
+            if unit == "B":
+                return f"{num:0.0f}{separator}{unit}"
+            else:
+                return f"{num:0.1f}{separator}{unit}"
+        num /= divisor
+
+    return f"{num:0.1f}{separator}{final_unit}"

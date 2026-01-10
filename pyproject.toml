@@ -8,32 +8,34 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "aiofiles>=25.1.0",
-    "aiogzip>=1.1.0",
-    "aiosqlite>=0.21.0",
-    "httpx>=0.28.1",
-    "pandas>=2.3.3",
-    "pydantic>=2.12.5",
+    "aiofiles<26.0.0,>=25.1.0",
+    "aiogzip<2.0.0,>=1.1.0",
+    "aiosqlite<1.0.0,>=0.21.0",
+    "httpx<1.0.0,>=0.28.1",
+    "pandas<3.0.0,>=2.3.3",
+    "psycopg[binary]>=3.3.2,<4.0.0",
+    "pydantic<3.0.0,>=2.12.5",
     "python-dateutil>=2.9.0.post0",
-    "python-debian>=1.0.1",
-    "reflex>=0.8.21",
-    "typer>=0.20.0",
+    "python-debian<2.0.0,>=1.0.1",
+    "reflex<1.0.0,>=0.8.24",
+    "typer<1.0.0,>=0.20.0",
     "tzdata>=2025.2",
-    "wrapt>=2.0.1",
+    "wrapt<2.1.0,>=2.0.1",
 ]
 
 [project.scripts]
 aptreader = "aptreader.aptreader:main"
 
 [build-system]
-requires = ["uv_build>=0.8.22,<0.9.0"]
+requires = ["uv_build>=0.9.20,<0.10.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ipython>=9.8.0",
-    "ipywidgets>=8.1.8",
-    "ruff>=0.14.7",
+    "ipython<10.0.0,>=9.8.0",
+    "ipywidgets<9.0.0,>=8.1.8",
+    "ruff<1.0.0,>=0.14.10",
+    "sqlite-web<1.0.0,>=0.6.7",
 ]
 
 

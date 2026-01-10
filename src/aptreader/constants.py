@@ -17,16 +17,21 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 REPOS_DIR = DATA_DIR / "repos"
 REPOS_DIR.mkdir(parents=True, exist_ok=True)
 
-# set database url
-if DATA_DIR.is_relative_to(Path.cwd()):
-    DB_URL = f"sqlite:///{DATA_DIR.relative_to(Path.cwd()) / 'aptreader.db'}"
+if getenv("REFLEX_DB_URI"):
+    # we have a database url from the environment, use that
+    DB_URL = getenv("REFLEX_DB_URI")
+    ASYNC_DB_URL = DB_URL
 else:
-    DB_URL = f"sqlite:///{DATA_DIR / 'aptreader.db'}"
+    # use sqlite
+    if DATA_DIR.is_relative_to(Path.cwd()):
+        DB_URL = f"sqlite:///{DATA_DIR.relative_to(Path.cwd()) / 'aptreader.db'}"
+    else:
+        DB_URL = f"sqlite:///{DATA_DIR / 'aptreader.db'}"
 
-if aiosqlite_available and DB_URL.startswith("sqlite:///"):
-    ASYNC_DB_URL = DB_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
-else:
-    ASYNC_DB_URL = None
+    if aiosqlite_available and DB_URL.startswith("sqlite:///"):
+        ASYNC_DB_URL = DB_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
+    else:
+        ASYNC_DB_URL = None
 
 
 # Page routes to always put in the same order at the start/top of the nav/sidebars

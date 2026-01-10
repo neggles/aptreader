@@ -7,9 +7,12 @@ from dateutil.parser import parse as parse_date
 from pydantic import computed_field
 from sqlmodel import JSON, Field, Relationship, UniqueConstraint, func, select
 
-from aptreader.models import Architecture, Component, Package
-
-from .links import DistributionArchitectureLink, DistributionComponentLink, DistributionPackageLink
+from aptreader.models.links import (
+    DistributionArchitectureLink,
+    DistributionComponentLink,
+    DistributionPackageLink,
+)
+from aptreader.models.packages import Architecture, Component, Package
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +56,18 @@ class Distribution(rx.Model, table=True):
         back_populates="distributions",
         sa_relationship_kwargs={"lazy": "selectin"},
     )
-
-    components: list["Component"] = Relationship(
+    components: list[Component] = Relationship(
         back_populates="distributions",
         link_model=DistributionComponentLink,
         sa_relationship_kwargs={"lazy": "selectin"},
     )
-    architectures: list["Architecture"] = Relationship(
+    architectures: list[Architecture] = Relationship(
         back_populates="distributions",
         link_model=DistributionArchitectureLink,
         sa_relationship_kwargs={"lazy": "selectin"},
     )
-    packages: list["Package"] = Relationship(
+
+    packages: list[Package] = Relationship(
         back_populates="distribution",
         link_model=DistributionPackageLink,
         sa_relationship_kwargs={"lazy": "selectin"},
@@ -83,21 +86,34 @@ class Distribution(rx.Model, table=True):
 
     @computed_field
     @property
-    def format_date(self) -> str | None:
+    def date_timestamp(self) -> float:
         """Get the parsed date as a datetime object."""
-        if self.date is None:
+        date = self.date or datetime.fromtimestamp(0).isoformat()
+
+        try:
+            date = parse_date(date)
+            return date.timestamp()
+        except (ValueError, TypeError):
+            logger.exception(f"Failed to parse date '{date}'")
+            return 0
+
+    @computed_field
+    @property
+    def format_date(self) -> str | None:
+        """Get the parsed date as a pretty string."""
+        if not self.date:
             return None
         try:
             date_val = parse_date(self.date)
             return date_val.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError) as e:
-            logger.debug(f"Failed to parse date '{self.date}': {e}")
+        except (ValueError, TypeError):
+            logger.exception(f"Failed to parse date '{self.date}'")
             return None
 
     @computed_field
     @property
     def format_last_fetched_at(self) -> str | None:
-        """Get the parsed date as a datetime object."""
+        """Get the parsed date as a pretty string."""
         if self.last_fetched_at is None:
             return None
         try:
@@ -153,9 +169,18 @@ class Repository(rx.Model, table=True):
     name: str = Field(index=True, unique=True)
     url: str = Field(index=True, unique=True)
 
-    distributions: list["Distribution"] = Relationship(back_populates="repository", cascade_delete=True)
-    components: list["Component"] = Relationship(back_populates="repository", cascade_delete=True)
-    architectures: list["Architecture"] = Relationship(back_populates="repository", cascade_delete=True)
+    distributions: list["Distribution"] = Relationship(
+        back_populates="repository",
+        cascade_delete=True,
+    )
+    components: list["Component"] = Relationship(
+        back_populates="repository",
+        cascade_delete=True,
+    )
+    architectures: list["Architecture"] = Relationship(
+        back_populates="repository",
+        cascade_delete=True,
+    )
     packages: list["Package"] = Relationship(back_populates="repository")
 
     last_fetched_at: datetime | None = Field(

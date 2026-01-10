@@ -9,9 +9,10 @@ from pydantic import ByteSize, computed_field
 from sqlmodel import JSON, BigInteger, Field, Relationship, UniqueConstraint
 
 from aptreader.models.links import DistributionArchitectureLink, DistributionComponentLink
+from aptreader.utils import stringify_size
 
 if TYPE_CHECKING:
-    from aptreader.models.repository import Distribution, Repository
+    from aptreader.models import Distribution, Repository
 
 
 class Component(rx.Model, table=True):
@@ -19,7 +20,7 @@ class Component(rx.Model, table=True):
 
     __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_component_distribution_name"),)
 
-    name: str = Field(index=True, unique=True)
+    name: str = Field(index=True)
     repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
         back_populates="components",
@@ -38,7 +39,7 @@ class Architecture(rx.Model, table=True):
 
     __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_architecture_distribution_name"),)
 
-    name: str = Field(index=True, unique=True)
+    name: str = Field(index=True)
     repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
     repository: "Repository" = Relationship(
         back_populates="architectures",
@@ -56,13 +57,18 @@ class Package(rx.Model, table=True):
     """Stored metadata for a single package entry from Packages.gz."""
 
     __table_args__ = (
-        UniqueConstraint(
+        sm.UniqueConstraint(
             "distribution_id",
             "component_id",
             "architecture_id",
             "name",
             "version",
             name="uq_package_distribution_component_architecture_name_version",
+        ),
+        sm.Index(
+            "ix_package_name_version",
+            "name",
+            "version",
         ),
     )
 
@@ -96,9 +102,13 @@ class Package(rx.Model, table=True):
     )
 
     component_id: int = Field(foreign_key="component.id", ondelete="CASCADE")
-    component: "Component" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
+    component: Component = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
     architecture_id: int = Field(foreign_key="architecture.id", ondelete="CASCADE")
-    architecture: "Architecture" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
+    architecture: Architecture = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
 
     last_fetched_at: datetime | None = Field(
         default=None,
@@ -117,7 +127,7 @@ class Package(rx.Model, table=True):
         """Package size formatted as a human-readable string."""
         if self.size is None:
             return "-"
-        return self.size.human_readable()
+        return stringify_size(self.size)
 
     @computed_field
     @property
@@ -125,4 +135,4 @@ class Package(rx.Model, table=True):
         """Package size formatted as a human-readable string."""
         if self.installed_size is None:
             return "-"
-        return self.installed_size.human_readable()
+        return stringify_size(self.installed_size)

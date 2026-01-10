@@ -249,6 +249,14 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+# env files
+.env.*
+!.env.example
+
+# compose overrides
+*.override.yaml
+*.override.yml
+
 # local misc and temp files
 /misc/
 /temp/

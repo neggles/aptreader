@@ -1,0 +1,17 @@
+@tailwind theme;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.rt-TableColumnHeaderCell .no-wrap-whitespace,
+.rt-TableCell .no-wrap-whitespace {
+    white-space: nowrap !important;
+}
+
+p.no-wrap-whitespace {
+    white-space: nowrap !important;
+}

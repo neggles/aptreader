@@ -1,0 +1,21 @@
+services:
+  db:
+    # server shared memory size
+    shm_size: 128mb
+    ports:
+      - target: 5432
+        published: "${PG_HOST_PORT:-3432}"
+        protocol: tcp
+        # comment to expose globally
+        host_ip: 127.0.0.1
+
+  pgadmin:
+    # remove this section if you want pgadmin to always be started
+    profiles:
+      - pgadmin
+    ports:
+      - target: "${PGADMIN_PORT:-3050}"
+        published: "${PGADMIN_PORT:-3050}"
+        protocol: tcp
+        # comment to expose globally
+        host_ip: 127.0.0.1

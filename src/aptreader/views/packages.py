@@ -1,6 +1,6 @@
 import reflex as rx
 
-from aptreader.components.repo_select import repo_select
+from aptreader.components.selectors import distro_select, repo_select
 from aptreader.models.packages import Package
 from aptreader.states.packages import PackagesState
 
@@ -8,61 +8,50 @@ from aptreader.states.packages import PackagesState
 def packages_filters() -> rx.Component:
     return rx.flex(
         repo_select(),
+        distro_select(),
         rx.spacer(),
-        rx.select(
-            PackagesState.component_filter_options,
-            value=PackagesState.component_filter,
-            label="Component",
-            on_change=PackagesState.set_component_filter,
-            width="200px",
-            min_width="200px",
+        rx.card(
+            rx.hstack(
+                rx.select(
+                    PackagesState.component_filter_options,
+                    value=PackagesState.component_filter,
+                    placeholder="Component",
+                    on_change=PackagesState.set_component_filter,
+                    width="200px",
+                    min_width="200px",
+                ),
+                rx.select(
+                    PackagesState.architecture_filter_options,
+                    value=PackagesState.architecture_filter,
+                    placeholder="Architecture",
+                    on_change=PackagesState.set_architecture_filter,
+                    width="200px",
+                    min_width="200px",
+                ),
+                rx.input(
+                    rx.input.slot(rx.icon("search")),
+                    placeholder="Filter by package name...",
+                    value=PackagesState.search_value,
+                    on_change=PackagesState.set_search_value,
+                    width="280px",
+                    min_width="280px",
+                ),
+            )
         ),
-        rx.select(
-            PackagesState.architecture_filter_options,
-            value=PackagesState.architecture_filter,
-            label="Architecture",
-            on_change=PackagesState.set_architecture_filter,
-            width="200px",
-            min_width="200px",
-        ),
-        rx.input(
-            rx.input.slot(rx.icon("search")),
-            placeholder="Filter by package name...",
-            value=PackagesState.search_value,
-            on_change=PackagesState.set_search_value,
-            width="280px",
-            min_width="280px",
-        ),
-        rx.badge(
-            rx.text(f"{PackagesState.packages_count} shown (limit {PackagesState.max_results})"),
-            color_scheme="gray",
-            variant="outline",
-            size="2",
-        ),
-        direction="row",
+        justify="end",
         align="center",
+        align_items="stretch",
         spacing="3",
-        wrap="wrap",
         width="100%",
     )
-
-
-def format_size(val: int | float | None) -> str:
-    if val is None:
-        return "-"
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if val < 1024:
-            return f"{val:.1f} {unit}"
-        val /= 1024
-    return f"{val:.1f} PB"
 
 
 def show_package(pkg: Package) -> rx.Component:
     return rx.table.row(
         rx.table.row_header_cell(rx.text(pkg.name, weight="bold")),
         rx.table.cell(rx.text(pkg.version, "-")),
-        rx.table.cell(rx.badge(pkg.components, color_scheme="blue", size="1")),
-        rx.table.cell(rx.badge(pkg.architectures, color_scheme="mint", size="1")),
+        rx.table.cell(rx.badge(pkg.component, color_scheme="blue", size="1")),
+        rx.table.cell(rx.badge(pkg.architecture, color_scheme="mint", size="1")),
         rx.table.cell(rx.text(pkg.size_str, size="2")),
         rx.table.cell(rx.text(pkg.description, size="2", max_width="38ch", white_space="normal")),
         rx.table.cell(
@@ -82,17 +71,43 @@ def show_package(pkg: Package) -> rx.Component:
     )
 
 
+def _header_cell(
+    text: str,
+    icon: str,
+    nowrap: bool = False,
+    w: str | int | None = None,
+    min_w: str | int | None = None,
+    font: str | None = None,
+    **kwargs,
+) -> rx.Component:
+    """Create a table header cell with icon."""
+    return rx.table.column_header_cell(
+        rx.hstack(
+            rx.icon(icon, size=18),
+            rx.text(text, font_family=font),
+            align="center",
+            spacing="2",
+        ),
+        class_name=(
+            rx.cond(nowrap, "no-wrap-whitespace", None),
+            rx.cond(w is not None, f"w-{w}", None),
+            rx.cond(min_w is not None, f"min-w-{min_w}", None),
+        ),
+        **kwargs,
+    )
+
+
 def packages_table() -> rx.Component:
     return rx.table.root(
         rx.table.header(
             rx.table.row(
-                rx.table.column_header_cell("Name"),
-                rx.table.column_header_cell("Version"),
-                rx.table.column_header_cell("Component"),
-                rx.table.column_header_cell("Arch"),
-                rx.table.column_header_cell("Size"),
-                rx.table.column_header_cell("Description"),
-                rx.table.column_header_cell("Files"),
+                _header_cell("Name", "package", max_w="min"),
+                _header_cell("Version", "tag", max_w="min"),
+                _header_cell("Component", "layers", max_w="min"),
+                _header_cell("Arch", "cpu", w="min"),
+                _header_cell("Size", "database", w="min"),
+                _header_cell("Description", "text"),
+                _header_cell("Link", "folder", w="min"),
             )
         ),
         rx.table.body(

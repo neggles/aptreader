@@ -1,5 +1,4 @@
 import logging
-from typing import Any, ClassVar
 
 import reflex as rx
 import sqlmodel as sm
@@ -14,11 +13,14 @@ logger = logging.getLogger(__name__)
 class RepoSelectState(rx.State):
     current_repo: Repository | None
 
-    DEFAULT_PROPS: ClassVar[dict[str, Any]] = {
-        "label": "Repository",
-        "placeholder": "Select...",
-        "width": "100%",
-    }
+    @rx.var
+    def current_repo_name(self) -> str:
+        return self.current_repo.name if self.current_repo else "None"
+
+    @rx.var
+    async def available_repo_names(self) -> list[str]:
+        app_state = await self.get_state(AppState)
+        return app_state.repository_names
 
     @rx.event
     async def load_from_route(self):
@@ -46,7 +48,7 @@ class RepoSelectState(rx.State):
 
     @rx.event
     async def select_repo_name(self, repo_name: str) -> EventType:
-        """Set the current repository."""
+        """Set the current repository by name."""
 
         if repo_name == self.current_repo_name:
             logger.debug("Selected repository is the same as current; no action taken.")
@@ -61,7 +63,7 @@ class RepoSelectState(rx.State):
 
     @rx.event
     async def select_repo(self, repo: Repository | None) -> EventType:
-        """Set the current repository by ID."""
+        """Set the current repository object."""
         if repo is None:
             logger.error("No repository provided to select.")
             return rx.toast.error("Selected repository not found.")
@@ -69,28 +71,26 @@ class RepoSelectState(rx.State):
             logger.debug("Requested repository is unchanged, not updating.")
             return rx.noop()
         else:
-            logger.info(f"Selected repository {repo.name} {repo.id=})")
+            logger.info(f"Selected repository {repo.name} {repo.id=}")
             self.current_repo = repo
 
         app_state = await self.get_state(AppState)
         app_state.current_repo = self.current_repo
 
         split_route = app_state.router.url.path.rsplit("/", 1)
-        if len(split_route) == 1:
-            return rx.redirect(f"{split_route[0]}/{repo.id}")
-        elif split_route[-1].isdigit() and split_route[-1] != str(repo.id):
+        if "distributions" not in self.router.url.path:
+            return rx.noop()
+
+        last_part = split_route[-1]
+        if len(split_route) == 1 or last_part == "" or not last_part.isdigit():
+            logger.info(f"Repository ID change: null -> {repo.id}, updating route")
+            return rx.redirect(f"{'/'.join(split_route)}/{repo.id}")
+        elif last_part != str(repo.id):
+            logger.info(f"Repository ID change: {last_part} -> {repo.id}, updating route")
             return [
-                rx.redirect(f"{split_route[0]}/{repo.id}"),
+                rx.redirect(f"{'/'.join(split_route[:-1])}/{repo.id}"),
                 rx.toast.info(f"Selected repository: {repo.name}"),
             ]
         else:
+            logger.info("Repository ID unchanged; no route update needed.")
             return rx.toast.info(f"Selected repository: {repo.name}")
-
-    @rx.var
-    def current_repo_name(self) -> str:
-        return self.current_repo.name if self.current_repo else "None"
-
-    @rx.var
-    async def available_repo_names(self) -> list[str]:
-        app_state = await self.get_state(AppState)
-        return app_state.repository_names

@@ -1,5 +1,4 @@
-"""
-Message: ${message}
+"""${message}
 
 Revision ID: ${up_revision}
 Revises: ${down_revision | comma,n}
@@ -11,6 +10,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 import sqlmodel as sm
+import sqlmodel.sql.sqltypes
 from alembic import op
 ${imports if imports else ""}
 

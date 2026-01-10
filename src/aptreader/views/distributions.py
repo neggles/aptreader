@@ -4,8 +4,9 @@ import reflex as rx
 from reflex.constants.colors import COLORS
 
 from aptreader.backend.backend import AppState
-from aptreader.components.repo_select import repo_select
+from aptreader.components.selectors import repo_select
 from aptreader.models import Distribution
+from aptreader.states.distributions import DistributionsState
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,13 @@ def architecture_to_color(architecture: str):
     return rx.match(
         architecture,
         ("i386", "blue"), ("amd64", "indigo"), ("amd64v3", "iris"),
-        ("armel", "red"), ("armhf", "red"), ("arm64", "ruby"), ("aarch64", "ruby"),
+        ("armel", "amber"), ("armhf", "amber"), ("arm64", "amber"), ("aarch64", "amber"),
         ("riscv32", "bronze"), ("riscv64", "brown"),
         ("powerpc", "teal"), ("ppc32", "teal"), ("ppc64el", "jade"), ("ppc64", "jade"),
-        ("s390", "yellow"), ("s390x", "amber"),
+        ("s390", "yellow"), ("s390x", "yellow"),
+        ("mips64el", "green"), ("mipsel", "green"),
+        ("loong64", "ruby"), ("loongarch64", "ruby"),
+        ("sw64", "plum"),
         "var(--accent-color)",
     )
 # fmt: on
@@ -42,6 +46,7 @@ def architecture_to_color(architecture: str):
 
 def show_distribution(dist: Distribution):
     """Display a single distribution in a table row."""
+
     return rx.table.row(
         rx.table.row_header_cell(rx.text(dist.codename, size="2")),
         rx.table.cell(rx.text(dist.suite, size="2")),
@@ -55,10 +60,10 @@ def show_distribution(dist: Distribution):
                         dist.format_components,
                         lambda comp: rx.badge(comp, color_scheme=component_to_color(comp)),
                     ),
-                    spacing="2",
+                    spacing="1",
                     wrap="wrap",
                 ),
-                "-",
+                rx.text("-"),
             ),
         ),
         rx.table.cell(
@@ -69,27 +74,27 @@ def show_distribution(dist: Distribution):
                         dist.format_architectures,
                         lambda arch: rx.badge(arch, color_scheme=architecture_to_color(arch)),
                     ),
-                    spacing="2",
+                    spacing="1",
                     wrap="wrap",
                 ),
-                "-",
+                rx.text("-"),
             ),
         ),
         rx.table.cell(rx.text(f"{dist.package_count}", size="2")),
         rx.table.cell(
             rx.text(
                 rx.cond(dist.format_date, dist.format_date, "-"),
-                wrap="nowrap",
+                class_name="no-wrap-whitespace",
+                font_family="var(--font-mono)",
+                size="2",
             )
         ),
         rx.table.cell(
             rx.text(
-                rx.cond(
-                    dist.last_fetched_at,
-                    dist.format_last_fetched_at,
-                    "-",
-                ),
-                wrap="nowrap",
+                rx.cond(dist.last_fetched_at, dist.format_last_fetched_at, "-"),
+                class_name="no-wrap-whitespace",
+                font_family="var(--font-mono)",
+                size="2",
             ),
         ),
         rx.table.cell(
@@ -114,6 +119,15 @@ def show_distribution(dist: Distribution):
                     ),
                     href=f"/packages/{dist.id}" if dist.id is not None else "/packages",
                 ),
+                rx.icon_button(
+                    rx.icon("bug", size=18),
+                    size="2",
+                    variant="soft",
+                    color_scheme="red",
+                    on_click=rx.console_log(
+                        f"Distribution details: arches={dist.architectures}, components={dist.components}"
+                    ),
+                ),
                 spacing="2",
             ),
             align="center",
@@ -123,134 +137,132 @@ def show_distribution(dist: Distribution):
     )
 
 
-@rx.event
-def load_distributions(state: AppState):
-    """Load distributions for a specific repository."""
-    if "distributions/" not in state.router.url.path:
-        return rx.noop()
-    route_splat = state.router.url.query_parameters.get("splat", [])
-    if not route_splat:
-        return rx.noop()
-
-    repo_id = route_splat[0]
-    if repo_id is None:
-        logger.warning("No repository ID in state")
-        return rx.noop()
-    if isinstance(repo_id, str) and not repo_id.isdigit():
-        logger.error(f"Invalid repository ID: {repo_id}")
-        return rx.noop()
-
-    repo_id = int(repo_id)
-    if state.current_repo is None or state.current_repo.id != repo_id:
-        logger.info(f"Updating current repository ID to {repo_id}")
-        state.set_current_repo_id(repo_id)
-
-    if state.current_repo is None:
-        return rx.toast.warning(f"Repository ID {repo_id} not found.")
-    return rx.toast.info(f"Loaded distributions for {state.current_repo.name}.")
-
-
-def _header_cell(text: str, icon: str, **kwargs) -> rx.Component:
+def _header_cell(
+    text: str,
+    icon: str,
+    nowrap: bool = False,
+    w: str | int | None = None,
+    min_w: str | int | None = None,
+    font: str | None = None,
+    **kwargs,
+) -> rx.Component:
     """Create a table header cell with icon."""
     return rx.table.column_header_cell(
         rx.hstack(
             rx.icon(icon, size=18),
-            rx.text(text),
+            rx.text(text, font_family=font),
             align="center",
             spacing="2",
         ),
+        class_name=(
+            rx.cond(nowrap, "no-wrap-whitespace", None),
+            rx.cond(w is not None, f"w-{w}", None),
+            rx.cond(min_w is not None, f"min-w-{min_w}", None),
+        ),
         **kwargs,
+    )
+
+
+def package_fetch_status() -> rx.Component:
+    return rx.card(
+        rx.hstack(
+            rx.match(
+                AppState.package_fetch_progress,
+                (range(100), rx.spinner(size="2")),
+                (100, rx.icon("list-check", size=18, color=rx.color("green", 6))),
+                rx.icon("list", size=18),
+            ),
+            rx.cond(
+                AppState.package_fetch_progress < 100,
+                rx.progress(
+                    value=AppState.package_fetch_progress,
+                    size="1",
+                    width="100px",
+                ),
+                rx.fragment(),
+            ),
+            rx.cond(
+                AppState.package_fetch_message,
+                rx.text(AppState.package_fetch_message),
+                rx.text("Idle"),
+            ),
+            spacing="3",
+            align="center",
+        ),
+        color_scheme=rx.cond(
+            AppState.is_fetching_packages == True,  # noqa: E712
+            "blue",
+            "grass",
+        ),
+        justify="end",
+        display="flex",
+        padding="0.75rem 1rem",
     )
 
 
 def distributions_table() -> rx.Component:
     """Display table of distributions."""
 
-    return rx.fragment(
-        rx.cond(
-            AppState.current_repo is not None,
-            rx.vstack(
-                repo_select(),
-                rx.cond(
-                    AppState.is_fetching_packages,
-                    rx.callout(
-                        rx.hstack(
-                            rx.spinner(size="2"),
-                            rx.vstack(
-                                rx.text(
-                                    rx.cond(
-                                        AppState.package_fetch_message,
-                                        AppState.package_fetch_message,
-                                        "Fetching packages...",
-                                    )
-                                ),
-                                rx.text(
-                                    rx.cond(
-                                        AppState.package_fetch_distribution_id != -1,
-                                        f"Distribution ID {AppState.package_fetch_distribution_id}",
-                                        "",
-                                    ),
-                                    size="2",
-                                    color=rx.color("gray", 10),
-                                ),
-                                spacing="1",
-                                align="start",
-                            ),
-                            rx.progress(
-                                value=AppState.package_fetch_progress,
-                                size="1",
-                                width="160px",
-                            ),
-                            spacing="3",
-                            align="center",
-                        ),
-                        color_scheme="indigo",
-                        size="2",
-                        width="25%",
-                        min_width="400px",
+    return rx.vstack(
+        rx.flex(
+            repo_select(),
+            package_fetch_status(),
+            rx.spacer(),
+            rx.card(
+                rx.hstack(
+                    rx.select(
+                        DistributionsState.component_filter_options,
+                        value=DistributionsState.component_filter,
+                        placeholder="Component",
+                        on_change=DistributionsState.set_component_filter,
+                        width="200px",
+                        min_width="200px",
                     ),
-                    rx.fragment(),
-                ),
-                rx.cond(
-                    AppState.distributions,
-                    rx.table.root(
-                        rx.table.header(
-                            rx.table.row(
-                                _header_cell("Codename", "tag"),
-                                _header_cell("Suite", "folder"),
-                                _header_cell("Origin", "globe"),
-                                _header_cell("Version", "hash"),
-                                _header_cell("Components", "package"),
-                                _header_cell("Architectures", "cpu"),
-                                _header_cell("Package count", "boxes"),
-                                _header_cell("Released", "calendar"),
-                                _header_cell("Last Fetched", "clock"),
-                                _header_cell("Actions", "package-search"),
-                            ),
-                        ),
-                        rx.table.body(
-                            rx.foreach(AppState.distributions, show_distribution),
-                        ),
-                        size="3",
-                        width="100%",
-                        class_name="table-fixed",
-                        variant="surface",
+                    rx.select(
+                        DistributionsState.architecture_filter_options,
+                        value=DistributionsState.architecture_filter,
+                        placeholder="Architecture",
+                        on_change=DistributionsState.set_architecture_filter,
+                        width="200px",
+                        min_width="200px",
                     ),
-                    rx.callout(
-                        rx.text(
-                            "No distributions found. Click the download button on the repositories page to fetch them."
-                        ),
-                        color_scheme="gray",
-                        size="2",
+                    rx.input(
+                        rx.input.slot(rx.icon("search")),
+                        placeholder="Filter by package name...",
+                        value=DistributionsState.search_value,
+                        on_change=DistributionsState.set_search_value,
+                        width="280px",
+                        min_width="280px",
                     ),
-                ),
-                width="100%",
+                )
             ),
-            rx.callout(
-                rx.text("Select a repository to view distributions"),
-                color_scheme="gray",
-                size="2",
-            ),
+            justify="end",
+            align="center",
+            align_items="stretch",
+            spacing="3",
+            width="100%",
         ),
-        on_mount=load_distributions(),
+        rx.table.root(
+            rx.table.header(
+                rx.table.row(
+                    _header_cell("Codename", "tag"),
+                    _header_cell("Suite", "folder"),
+                    _header_cell("Origin", "globe"),
+                    _header_cell("Version", "hash"),
+                    _header_cell("Components", "package"),
+                    _header_cell("Architectures", "cpu"),
+                    _header_cell("Packages", "boxes"),
+                    _header_cell("Released", "calendar", nowrap=True, min_w="fit"),
+                    _header_cell("Last Fetched", "clock", nowrap=True, min_w="fit"),
+                    _header_cell("Actions", "package-search"),
+                ),
+            ),
+            rx.table.body(
+                rx.foreach(AppState.distributions, show_distribution),
+            ),
+            size="3",
+            width="100%",
+            class_name="table-fixed",
+            variant="surface",
+        ),
     )

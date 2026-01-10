@@ -4,7 +4,6 @@ import logging
 
 import reflex as rx
 import sqlmodel as sm
-from sqlmodel import select
 
 from aptreader.models.packages import Architecture, Component, Package
 from aptreader.models.repository import Distribution
@@ -30,7 +29,8 @@ class PackagesState(rx.State):
 
     @rx.event
     def load_from_route(self):
-        if "packages/" not in self.router.url.path:
+        if "packages" not in self.router.url.path:
+            logger.info("Not on packages route; skipping load_from_route.")
             return rx.noop()
         route_splat = self.router.url.query_parameters.get("splat", [])
         if not route_splat:
@@ -49,31 +49,31 @@ class PackagesState(rx.State):
             return
 
         with rx.session() as session:
-            query = select(Package).where(sm.any_(Package.distributions).id == self.distribution_id)
+            query = Package.select().where(Package.distribution_id == self.distribution_id)
 
             if self.component_filter not in {"", "all"}:
                 component = session.exec(
-                    select(Component).where(
-                        Component.distribution_id == self.distribution_id,
+                    Component.select().where(
+                        Component.repository_id == Package.repository_id,
                         Component.name == self.component_filter,
                     )
                 ).one_or_none()
                 if component is None:
                     self.packages = []
                     return
-                query = query.where(sm.any_(Package.components) == component)
+                query = query.where(Package.component == component)
 
             if self.architecture_filter not in {"", "all"}:
                 architecture = session.exec(
-                    select(Architecture).where(
-                        Architecture.distribution_id == self.distribution_id,
+                    Architecture.select().where(
+                        Architecture.repository_id == Package.repository_id,
                         Architecture.name == self.architecture_filter,
                     )
                 ).one_or_none()
                 if architecture is None:
                     self.packages = []
                     return
-                query = query.where(architecture.id == sm.any_(Package.architectures))
+                query = query.where(Package.architecture == architecture)
 
             if self.search_value:
                 search = f"%{self.search_value.lower()}%"
@@ -86,30 +86,6 @@ class PackagesState(rx.State):
 
             query = query.order_by(Package.name).limit(self.max_results)
             rows = session.exec(query).all()
-            component_ids = {comp.id for pkg in rows for comp in pkg.components if comp.id is not None}
-            architecture_ids = {arch.id for pkg in rows for arch in pkg.architectures if arch.id is not None}
-
-            component_map: dict[int, str] = {}
-            if component_ids:
-                component_rows = session.exec(
-                    select(Component).where(Component.distribution_id == self.distribution_id)
-                ).all()
-                component_map = {
-                    comp.id: comp.name
-                    for comp in component_rows
-                    if comp.id is not None and comp.id in component_ids
-                }
-
-            architecture_map: dict[int, str] = {}
-            if architecture_ids:
-                architecture_rows = session.exec(
-                    select(Architecture).where(Architecture.distribution_id == self.distribution_id)
-                ).all()
-                architecture_map = {
-                    arch.id: arch.name
-                    for arch in architecture_rows
-                    if arch.id is not None and arch.id in architecture_ids
-                }
 
             formatted: list[dict] = []
             for pkg in rows:
@@ -118,14 +94,8 @@ class PackagesState(rx.State):
                         "id": pkg.id,
                         "name": pkg.name,
                         "version": pkg.version,
-                        "component": component_map.get(
-                            pkg.components[0].id if pkg.components else None,  # type: ignore
-                            "-",
-                        ),
-                        "architecture": architecture_map.get(
-                            pkg.architectures[0].id if pkg.architectures else None,  # type: ignore
-                            "-",
-                        ),
+                        "component": pkg.component.name if pkg.component else "-",
+                        "architecture": pkg.architecture.name if pkg.architecture else "-",
                         "size": pkg.size,
                         "installed_size": pkg.installed_size,
                         "description": pkg.description,
@@ -164,24 +134,24 @@ class PackagesState(rx.State):
         if self.distribution_id is None:
             return []
         with rx.session() as session:
-            results = session.exec(
-                select(Component.name)
-                .where(Component.distribution_id == self.distribution_id)
-                .order_by(Component.name)
-            ).all()
-            return list(results)
+            dist = session.get(Distribution, self.distribution_id)
+            if not dist:
+                return []
+            dist.components.sort(key=lambda c: c.name.lower())
+            results = [c.name for c in dist.components]
+            return results
 
     @rx.var
     def architecture_options(self) -> list[str]:
         if self.distribution_id is None:
             return []
         with rx.session() as session:
-            results = session.exec(
-                select(Architecture.name)
-                .where(Architecture.distribution_id == self.distribution_id)
-                .order_by(Architecture.name)
-            ).all()
-            return list(results)
+            dist = session.get(Distribution, self.distribution_id)
+            if not dist:
+                return []
+            dist.architectures.sort(key=lambda a: a.name.lower())
+            results = [a.name for a in dist.architectures]
+            return results
 
     @rx.var
     def component_filter_options(self) -> list[str]:
@@ -200,4 +170,16 @@ class PackagesState(rx.State):
     @rx.var
     def distribution_title(self) -> str:
         distribution = self.distribution
-        return distribution.codename if distribution else "No distribution selected"
+        if not distribution:
+            return "No distribution selected"
+
+        dist_name = distribution.name if distribution.name else None
+        dist_codename = distribution.codename if distribution.codename else None
+        if dist_name and dist_codename:
+            return f"{dist_name} ({dist_codename})"
+        elif dist_name:
+            return dist_name
+        elif dist_codename:
+            return dist_codename
+        else:
+            return "Unnamed Distribution"

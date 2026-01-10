@@ -1,0 +1,54 @@
+name: aptreader
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
+      POSTGRES_DB: ${PG_DATABASE:-aptreader}
+      # this is the default for v18 and newer containers, here for reference only
+      # PGDATA: /var/lib/postgresql/18/data
+    # ports are configured in override file
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        bind:
+          create_host_path: true
+    healthcheck:
+      disable: false
+      test: ["CMD", "pg_isready", "-U", "${PG_USERNAME}", "-h", "127.0.0.1"]
+      start_period: 5s
+      interval: 5s
+      retries: 3
+      timeout: 5s
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: "${PGADMIN_PORT:-3050}"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "30"
+    volumes:
+      - type: volume
+        source: pgadmin_data
+        target: /var/lib/pgadmin/
+    # ports are configured in override file
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: false
+      test: ["CMD", "nc", "-vz", "127.0.0.1", "${PGADMIN_PORT:-3050}"]
+      start_period: 5s
+      interval: 5s
+      retries: 3
+      timeout: 5s
+
+volumes:
+  pgadmin_data:

@@ -1,0 +1,19 @@
+export VIRTUAL_ENV=$(expand_path ./.venv/)
+layout python $(uv python find)
+
+# postgres config
+export PG_HOST=localhost
+export PG_PORT=5432
+export PG_USERNAME=postgres
+export PG_PASSWORD=postgres
+export PG_DATABASE=aptreader
+
+# pgadmin config
+export PGADMIN_PORT=3050
+# export PGADMIN_DEFAULT_EMAIL='admin@pgadmin.org'
+# export PGADMIN_DEFAULT_PASSWORD='pgadmin'
+
+# reflex/app config
+export REFLEX_API_URL="http://localhost:3001"
+export REFLEX_LOGLEVEL="DEBUG"
+export REFLEX_DB_URI="postgresql+psycopg://${PG_USERNAME}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${PG_DATABASE}"

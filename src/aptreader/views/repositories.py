@@ -239,8 +239,8 @@ def _header_cell(text: str, icon: str, max_width: str | None = None) -> rx.Compo
     )
 
 
-def fetch_status() -> rx.Component:
-    return rx.callout(
+def repo_fetch_status() -> rx.Component:
+    return rx.card(
         rx.hstack(
             rx.match(
                 AppState.fetch_progress,
@@ -276,76 +276,71 @@ def fetch_status() -> rx.Component:
     )
 
 
-def fetch_progress() -> rx.Component:
-    return rx.callout(
-        rx.progress(
-            value=AppState.fetch_progress,
-            size="2",
-            width="100%",
-            margin_top="0.5rem",
-            color_scheme="blue",
-        ),
-        color_scheme=rx.cond(
-            AppState.fetch_progress < 100,
-            "blue",
-            "grass",
-        ),
-        align="center",
-    )
-
-
 def repositories_table():
     return rx.vstack(
         # Progress indicator for distribution fetching
         rx.flex(
-            add_repository_button(),
-            rx.button(
-                rx.icon(
-                    "refresh-cw",
-                    style={"animation": rx.cond(AppState.is_loading, "spin 1s linear infinite", "none")},
+            rx.card(
+                rx.hstack(
+                    add_repository_button(),
+                    rx.button(
+                        rx.icon(
+                            "refresh-cw",
+                            style={
+                                "animation": rx.cond(AppState.is_loading, "spin 1s linear infinite", "none")
+                            },
+                        ),
+                        rx.text("Reload repositories", size="3", display=["none", "none", "block"]),
+                        size="3",
+                        on_click=AppState.load_repositories(True),
+                    ),
                 ),
-                rx.text("Reload repositories", size="3", display=["none", "none", "block"]),
-                size="3",
-                on_click=AppState.load_repositories(True),
             ),
-            fetch_status(),
-            # fetch_progress(),
+            repo_fetch_status(),
             rx.spacer(),
-            rx.cond(
-                AppState.sort_reverse,
-                rx.icon(
-                    "arrow-down-z-a",
-                    size=28,
-                    stroke_width=1.5,
-                    cursor="pointer",
-                    on_click=AppState.toggle_sort,
+            rx.card(
+                rx.hstack(
+                    rx.cond(
+                        AppState.sort_reverse,
+                        rx.icon(
+                            "arrow-down-z-a",
+                            size=28,
+                            stroke_width=1.5,
+                            cursor="pointer",
+                            on_click=AppState.toggle_sort,
+                        ),
+                        rx.icon(
+                            "arrow-down-a-z",
+                            size=28,
+                            stroke_width=1.5,
+                            cursor="pointer",
+                            on_click=AppState.toggle_sort,
+                        ),
+                    ),
+                    rx.select(
+                        ["id", "name", "url", "last_fetched_at"],
+                        value=AppState.sort_value,
+                        placeholder="Sort",
+                        size="3",
+                        on_change=lambda sort_value: AppState.sort_values(sort_value),
+                        class_name=["min-w-max", "w-full"],
+                    ),
+                    rx.input(
+                        rx.input.slot(rx.icon("search")),
+                        placeholder="Search here...",
+                        size="3",
+                        max_width="240px",
+                        width="100%",
+                        variant="surface",
+                        on_change=lambda value: AppState.filter_values(value),
+                    ),
+                    justify="end",
+                    align_items="center",
                 ),
-                rx.icon(
-                    "arrow-down-a-z",
-                    size=28,
-                    stroke_width=1.5,
-                    cursor="pointer",
-                    on_click=AppState.toggle_sort,
-                ),
-            ),
-            rx.select(
-                ["id", "name", "url", "update_ts", "repo_distribution_count"],
-                value=AppState.sort_value,
-                placeholder="Sort By: Name",
-                size="3",
-                on_change=lambda sort_value: AppState.sort_values(sort_value),
-            ),
-            rx.input(
-                rx.input.slot(rx.icon("search")),
-                placeholder="Search here...",
-                size="3",
-                max_width="240px",
-                width="100%",
-                variant="surface",
-                on_change=lambda value: AppState.filter_values(value),
             ),
             justify="end",
             align="center",
+            align_items="stretch",
             spacing="3",
             wrap="wrap",
             width="100%",

@@ -12,7 +12,11 @@
         "*.txt": "plaintext",
         "*.yaml": "yaml",
         "*.yml": "yaml",
-        "*.toml": "toml"
+        "*.toml": "toml",
+        "*.yaml.example": "yaml",
+        "*.yml.example": "yaml",
+        ".envrc": "shellscript",
+        ".envrc.example": "shellscript"
     },
 
     "files.exclude": {
@@ -23,11 +27,19 @@
         "**/__pycache__": true,
         "**/*.egg-info": true
     },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/*.code-search": true,
+        "**/.ruff_cache": true,
+        "**/__pycache__": true,
+        "**/uv.lock": true,
+        "**/.venv": true
+    },
 
     "[python]": {
         "editor.wordBasedSuggestions": "off",
         "editor.formatOnSave": true,
-        "editor.formatOnSaveMode": "file",
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
             "source.organizeImports.ruff": "always",
@@ -36,7 +48,6 @@
     },
 
     "[json]": {
-        "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
         "editor.tabSize": 2,
         "editor.codeActionsOnSave": {
@@ -44,7 +55,6 @@
         }
     },
     "[jsonc]": {
-        "editor.formatOnSaveMode": "file",
         "editor.formatOnSave": true,
         "editor.tabSize": 2,
         "editor.codeActionsOnSave": {
@@ -63,5 +73,19 @@
     "yaml.format.bracketSpacing": true,
     "yaml.format.proseWrap": "preserve",
     "yaml.format.singleQuote": false,
-    "yaml.format.printWidth": 110
+    "yaml.format.printWidth": 110,
+
+    "[css]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "vscode.css-language-features"
+    },
+    "yaml.schemas": {
+        "https://json.schemastore.org/clangd.json": ".clangd",
+        "https://raw.githubusercontent.com/compose-spec/compose-go/master/schema/compose-spec.json": [
+            "compose*.y*ml",
+            "docker-compose*.y*ml",
+            "compose*.y*ml.example",
+            "docker-compose*.y*ml.example"
+        ]
+    }
 }

@@ -1,11 +1,9 @@
 # ruff: isort:skip-file
 import logging
-import warnings
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from sqlalchemy.exc import SAWarning
 
 # trigger DB monkey-patching
 from aptreader.db import NAMING_CONVENTION
@@ -29,8 +27,13 @@ except ImportError:
     logger.warning("Could not import rxconfig, using alembic.ini settings.")
     pass
 
-# filter out the SA warnings caused by rx.model.ModelRegistry.get_metadata
-warnings.filterwarnings("ignore", category=SAWarning, message="already exists within the given MetaData")
+db_url = config.get_main_option("sqlalchemy.url")
+if db_url is None:
+    raise RuntimeError("Database URL could not be determined for Alembic migrations.")
+logger.info(f"Using database URL: {db_url}")
+
+is_sqlite = "sqlite" in db_url
+dialect_opts = {"paramstyle": "named"} if is_sqlite else None
 
 # get the target metadata from Reflex models
 target_metadata = rx.model.ModelRegistry.get_metadata()
@@ -58,8 +61,9 @@ def run_migrations_offline() -> None:
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,
+        compare_type=True,
+        dialect_opts=dialect_opts,
+        render_as_batch=is_sqlite,
     )
 
     with context.begin_transaction():
@@ -83,7 +87,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=True,
+            compare_type=True,
+            render_as_batch=is_sqlite,
         )
 
         with context.begin_transaction():
