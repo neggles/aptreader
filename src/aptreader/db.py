@@ -53,7 +53,9 @@ def on_engine_connect(
 
                 # restore previous autocommit setting
                 dbapi_connection.autocommit = ac
-        logger.debug(f"SQLite PRAGMA foreign_keys=ON set for connection {dbapi_connection!r}")
+            logger.debug(f"SQLite PRAGMA foreign_keys=ON set for connection {dbapi_connection!r}")
+        else:
+            logger.debug("No PRAGMA settings applied; not an SQLite database.")
     except Exception as e:
         logger.exception(f"Error setting SQLite PRAGMA: {e}")
         raise e

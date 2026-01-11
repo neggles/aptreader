@@ -23,6 +23,13 @@ class RepoSelectState(rx.State):
         return app_state.repository_names
 
     @rx.event
+    async def load_from_state(self):
+        """Load the current repository from the AppState."""
+        app_state = await self.get_state(AppState)
+        if app_state.current_repo is not None:
+            return await self.select_repo(app_state.current_repo)
+
+    @rx.event
     async def load_from_route(self):
         """Load the current repository on component load."""
         # check the route for current repo id

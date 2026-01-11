@@ -50,8 +50,8 @@ def show_distribution(dist: Distribution):
     return rx.table.row(
         rx.table.row_header_cell(rx.text(dist.codename, size="2")),
         rx.table.cell(rx.text(dist.suite, size="2")),
-        rx.table.cell(rx.text(dist.origin)),
-        rx.table.cell(rx.text(dist.version)),
+        rx.table.cell(rx.text(dist.origin, size="2")),
+        rx.table.cell(rx.text(dist.version, size="2")),
         rx.table.cell(
             rx.cond(
                 dist.components,

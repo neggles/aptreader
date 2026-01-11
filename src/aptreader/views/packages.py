@@ -1,57 +1,16 @@
 import reflex as rx
 
 from aptreader.components.selectors import distro_select, repo_select
-from aptreader.models.packages import Package
+from aptreader.models import Package
 from aptreader.states.packages import PackagesState
-
-
-def packages_filters() -> rx.Component:
-    return rx.flex(
-        repo_select(),
-        distro_select(),
-        rx.spacer(),
-        rx.card(
-            rx.hstack(
-                rx.select(
-                    PackagesState.component_filter_options,
-                    value=PackagesState.component_filter,
-                    placeholder="Component",
-                    on_change=PackagesState.set_component_filter,
-                    width="200px",
-                    min_width="200px",
-                ),
-                rx.select(
-                    PackagesState.architecture_filter_options,
-                    value=PackagesState.architecture_filter,
-                    placeholder="Architecture",
-                    on_change=PackagesState.set_architecture_filter,
-                    width="200px",
-                    min_width="200px",
-                ),
-                rx.input(
-                    rx.input.slot(rx.icon("search")),
-                    placeholder="Filter by package name...",
-                    value=PackagesState.search_value,
-                    on_change=PackagesState.set_search_value,
-                    width="280px",
-                    min_width="280px",
-                ),
-            )
-        ),
-        justify="end",
-        align="center",
-        align_items="stretch",
-        spacing="3",
-        width="100%",
-    )
 
 
 def show_package(pkg: Package) -> rx.Component:
     return rx.table.row(
         rx.table.row_header_cell(rx.text(pkg.name, weight="bold")),
         rx.table.cell(rx.text(pkg.version, "-")),
-        rx.table.cell(rx.badge(pkg.component, color_scheme="blue", size="1")),
-        rx.table.cell(rx.badge(pkg.architecture, color_scheme="mint", size="1")),
+        rx.table.cell(rx.badge(pkg.component_id, color_scheme="blue", size="1")),
+        rx.table.cell(rx.badge(pkg.architecture_id, color_scheme="mint", size="1")),
         rx.table.cell(rx.text(pkg.size_str, size="2")),
         rx.table.cell(rx.text(pkg.description, size="2", max_width="38ch", white_space="normal")),
         rx.table.cell(
@@ -98,33 +57,73 @@ def _header_cell(
 
 
 def packages_table() -> rx.Component:
-    return rx.table.root(
-        rx.table.header(
-            rx.table.row(
-                _header_cell("Name", "package", max_w="min"),
-                _header_cell("Version", "tag", max_w="min"),
-                _header_cell("Component", "layers", max_w="min"),
-                _header_cell("Arch", "cpu", w="min"),
-                _header_cell("Size", "database", w="min"),
-                _header_cell("Description", "text"),
-                _header_cell("Link", "folder", w="min"),
-            )
+    return rx.vstack(
+        rx.flex(
+            repo_select(),
+            distro_select(),
+            rx.spacer(),
+            rx.card(
+                rx.hstack(
+                    rx.select(
+                        PackagesState.component_filter_options,
+                        value=PackagesState.component_filter,
+                        placeholder="Component",
+                        on_change=PackagesState.set_component_filter,
+                        width="200px",
+                        min_width="200px",
+                    ),
+                    rx.select(
+                        PackagesState.architecture_filter_options,
+                        value=PackagesState.architecture_filter,
+                        placeholder="Architecture",
+                        on_change=PackagesState.set_architecture_filter,
+                        width="200px",
+                        min_width="200px",
+                    ),
+                    rx.input(
+                        rx.input.slot(rx.icon("search")),
+                        placeholder="Filter by package name...",
+                        value=PackagesState.search_value,
+                        on_change=PackagesState.set_search_value,
+                        width="280px",
+                        min_width="280px",
+                    ),
+                )
+            ),
+            justify="end",
+            align="center",
+            align_items="stretch",
+            spacing="3",
+            width="100%",
         ),
-        rx.table.body(
-            rx.cond(
-                PackagesState.packages,
-                rx.foreach(PackagesState.packages, show_package),
+        rx.table.root(
+            rx.table.header(
                 rx.table.row(
-                    rx.table.cell(
-                        rx.text("No packages match your filters."),
-                        col_span=7,
-                        align="center",
-                    )
-                ),
-            )
+                    _header_cell("Name", "package", max_w="min"),
+                    _header_cell("Version", "tag", max_w="min"),
+                    _header_cell("Component", "layers", max_w="min"),
+                    _header_cell("Arch", "cpu", w="min"),
+                    _header_cell("Size", "database", w="min"),
+                    _header_cell("Description", "text"),
+                    _header_cell("Link", "folder", w="min"),
+                )
+            ),
+            rx.table.body(
+                rx.cond(
+                    PackagesState.packages,
+                    rx.foreach(PackagesState.packages, show_package),
+                    rx.table.row(
+                        rx.table.cell(
+                            rx.text("No packages match your filters."),
+                            col_span=7,
+                            align="center",
+                        )
+                    ),
+                )
+            ),
+            variant="surface",
+            size="3",
+            width="100%",
+            on_mount=PackagesState.load_packages,
         ),
-        variant="surface",
-        size="3",
-        width="100%",
-        on_mount=PackagesState.load_from_route,
     )

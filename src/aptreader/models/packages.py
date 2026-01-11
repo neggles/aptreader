@@ -8,7 +8,10 @@ import sqlmodel as sm
 from pydantic import ByteSize, computed_field
 from sqlmodel import JSON, BigInteger, Field, Relationship, UniqueConstraint
 
-from aptreader.models.links import DistributionArchitectureLink, DistributionComponentLink
+from aptreader.models.links import (
+    DistributionArchitectureLink,
+    DistributionComponentLink,
+)
 from aptreader.utils import stringify_size
 
 if TYPE_CHECKING:
@@ -102,11 +105,11 @@ class Package(rx.Model, table=True):
     )
 
     component_id: int = Field(foreign_key="component.id", ondelete="CASCADE")
-    component: Component = Relationship(
+    component: "Component" = Relationship(
         sa_relationship_kwargs={"lazy": "selectin"},
     )
     architecture_id: int = Field(foreign_key="architecture.id", ondelete="CASCADE")
-    architecture: Architecture = Relationship(
+    architecture: "Architecture" = Relationship(
         sa_relationship_kwargs={"lazy": "selectin"},
     )
 
