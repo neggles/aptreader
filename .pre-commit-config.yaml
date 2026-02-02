@@ -8,7 +8,7 @@ ci:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.11
+    rev: v0.14.14
     hooks:
       # Run the linter.
       - id: ruff
@@ -33,7 +33,7 @@ repos:
           - "--maxkb=4096"
 
   - repo: https://github.com/adrienverge/yamllint.git
-    rev: v1.37.1
+    rev: v1.38.0
     hooks:
       - id: yamllint
         args: ["-d", "{extends: relaxed, rules: {line-length: {max: 120}}}"]
