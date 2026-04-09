@@ -3,7 +3,6 @@ import logging
 import reflex as rx
 from reflex.constants.colors import COLORS
 
-from aptreader.backend.backend import AppState
 from aptreader.components.selectors import repo_select
 from aptreader.models import Distribution
 from aptreader.states.distributions import DistributionsState
@@ -54,10 +53,10 @@ def show_distribution(dist: Distribution):
         rx.table.cell(rx.text(dist.version, size="2")),
         rx.table.cell(
             rx.cond(
-                dist.components,
+                dist.component_names,
                 rx.flex(
                     rx.foreach(
-                        dist.format_components,
+                        dist.component_names,
                         lambda comp: rx.badge(comp, color_scheme=component_to_color(comp)),
                     ),
                     spacing="1",
@@ -68,10 +67,10 @@ def show_distribution(dist: Distribution):
         ),
         rx.table.cell(
             rx.cond(
-                dist.architectures,
+                dist.architecture_names,
                 rx.flex(
                     rx.foreach(
-                        dist.format_architectures,
+                        dist.architecture_names,
                         lambda arch: rx.badge(arch, color_scheme=architecture_to_color(arch)),
                     ),
                     spacing="1",
@@ -104,10 +103,12 @@ def show_distribution(dist: Distribution):
                     size="2",
                     variant="soft",
                     color_scheme="indigo",
-                    loading=rx.cond(AppState.package_fetch_distribution_id == dist.id, True, False),
-                    disabled=AppState.is_fetching_packages,
+                    loading=rx.cond(DistributionsState.package_fetch_distribution_id == dist.id, True, False),
+                    disabled=DistributionsState.package_fetching,
                     on_click=rx.cond(
-                        dist.id is not None, AppState.fetch_distribution_packages(dist.id), rx.noop()
+                        dist.id is not None,
+                        DistributionsState.fetch_packages_for_distribution(dist.id),
+                        rx.noop(),
                     ),
                 ),
                 rx.link(
@@ -125,7 +126,7 @@ def show_distribution(dist: Distribution):
                     variant="soft",
                     color_scheme="red",
                     on_click=rx.console_log(
-                        f"Distribution details: arches={dist.architectures}, components={dist.components}"
+                        f"Distribution details: arches={dist.architecture_names}, components={dist.component_names}"
                     ),
                 ),
                 spacing="2",
@@ -167,30 +168,30 @@ def package_fetch_status() -> rx.Component:
     return rx.card(
         rx.hstack(
             rx.match(
-                AppState.package_fetch_progress,
+                DistributionsState.package_fetch_progress,
                 (range(100), rx.spinner(size="2")),
                 (100, rx.icon("list-check", size=18, color=rx.color("green", 6))),
                 rx.icon("list", size=18),
             ),
             rx.cond(
-                AppState.package_fetch_progress < 100,
+                DistributionsState.package_fetch_progress < 100,
                 rx.progress(
-                    value=AppState.package_fetch_progress,
+                    value=DistributionsState.package_fetch_progress,
                     size="1",
                     width="100px",
                 ),
                 rx.fragment(),
             ),
             rx.cond(
-                AppState.package_fetch_message,
-                rx.text(AppState.package_fetch_message),
+                DistributionsState.package_fetch_message,
+                rx.text(DistributionsState.package_fetch_message),
                 rx.text("Idle"),
             ),
             spacing="3",
             align="center",
         ),
         color_scheme=rx.cond(
-            AppState.is_fetching_packages == True,  # noqa: E712
+            DistributionsState.package_fetching == True,  # noqa: E712
             "blue",
             "grass",
         ),
@@ -200,41 +201,84 @@ def package_fetch_status() -> rx.Component:
     )
 
 
+def refresh_dists_button() -> rx.Component:
+    return rx.button(
+        rx.icon(
+            "refresh-cw",
+            style={
+                "animation": rx.cond(DistributionsState.package_fetching, "spin 1s linear infinite", "none")
+            },
+        ),
+        on_click=DistributionsState.load_distributions,
+    )
+
+
 def distributions_table() -> rx.Component:
     """Display table of distributions."""
 
+    refresh_btn = refresh_dists_button()
     return rx.vstack(
         rx.flex(
-            repo_select(),
+            repo_select(refresh_btn),
             package_fetch_status(),
             rx.spacer(),
             rx.card(
                 rx.hstack(
+                    rx.icon_button(
+                        rx.icon("arrow-left", size=18),
+                        size="2",
+                        variant="surface",
+                        color_scheme="blue",
+                        on_click=DistributionsState.prev_page,
+                    ),
+                    rx.text(f"{DistributionsState.page_number} / {DistributionsState.total_pages}"),
+                    rx.icon_button(
+                        rx.icon("arrow-right", size=18),
+                        size="2",
+                        variant="surface",
+                        color_scheme="blue",
+                        on_click=DistributionsState.next_page,
+                    ),
                     rx.select(
-                        DistributionsState.component_filter_options,
+                        ["25", "50", "100", "200"],
+                        placeholder="Page Size",
+                        width="5em",
+                        value=DistributionsState.page_size_str,
+                        on_change=DistributionsState.change_page_size,
+                    ),
+                    spacing="3",
+                    align="center",
+                ),
+            ),
+            rx.card(
+                rx.hstack(
+                    rx.select(
+                        DistributionsState.available_components,
                         value=DistributionsState.component_filter,
                         placeholder="Component",
-                        on_change=DistributionsState.set_component_filter,
+                        on_change=DistributionsState.change_component_filter,
                         width="200px",
                         min_width="200px",
                     ),
                     rx.select(
-                        DistributionsState.architecture_filter_options,
+                        DistributionsState.available_architectures,
                         value=DistributionsState.architecture_filter,
                         placeholder="Architecture",
-                        on_change=DistributionsState.set_architecture_filter,
+                        on_change=DistributionsState.change_architecture_filter,
                         width="200px",
                         min_width="200px",
                     ),
-                    rx.input(
-                        rx.input.slot(rx.icon("search")),
-                        placeholder="Filter by package name...",
-                        value=DistributionsState.search_value,
-                        on_change=DistributionsState.set_search_value,
-                        width="280px",
-                        min_width="280px",
+                    rx.debounce_input(
+                        rx.input(
+                            rx.input.slot(rx.icon("search")),
+                            placeholder="Search distributions...",
+                            value=DistributionsState.search_value,
+                            on_change=DistributionsState.change_search_value,
+                            width="250px",
+                            min_width="250px",
+                        ),
                     ),
-                )
+                ),
             ),
             justify="end",
             align="center",
@@ -258,7 +302,7 @@ def distributions_table() -> rx.Component:
                 ),
             ),
             rx.table.body(
-                rx.foreach(AppState.distributions, show_distribution),
+                rx.foreach(DistributionsState.page, show_distribution),
             ),
             size="3",
             width="100%",

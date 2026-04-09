@@ -68,3 +68,9 @@ def get_metadata_wrapper(wrapped, instance, args, kwargs):
     metadata: sa.MetaData = wrapped(*args, **kwargs)
     metadata.naming_convention = NAMING_CONVENTION
     return metadata
+
+
+# monkey-patch SQLModel to allow for Mapped to be used
+@wrapt.patch_function_wrapper("sqlmodel.main", "get_column_from_field")
+def get_column_from_field_wrapper(wrapped, instance, args, kwargs):
+    """Wrapper to allow Mapped to be used in SQLModel models."""

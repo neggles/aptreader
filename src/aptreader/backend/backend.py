@@ -1,188 +1,20 @@
 import asyncio
 import datetime
 import logging
-import time
-from collections.abc import AsyncIterator
 from math import floor
 from pathlib import Path
-from typing import Any
 
 import reflex as rx
 import sqlmodel as sm
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.orm import selectinload
-from sqlmodel import func, select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlmodel import select
 
-from aptreader.fetcher import (
-    discover_distributions,
-    download_packages_index,
-    fetch_distributions,
-    iter_packages_entries_async,
-)
-from aptreader.models.packages import Architecture, Component, Package
-from aptreader.models.repository import Distribution, Repository
+from aptreader.constants import UNIX_EPOCH_START
+from aptreader.fetcher import discover_distributions, fetch_distributions
+from aptreader.models import Distribution, Repository
 from aptreader.utils import long_running_task
 
 logger = logging.getLogger(__name__)
-
-
-def _safe_int(value: str | None) -> int | None:
-    try:
-        return int(value) if value not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _clean_text(value: str | None) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else value or None
-
-
-def _build_package_model(
-    entry: dict[str, Any],
-    distribution: Distribution,
-    component: Component,
-    architecture: Architecture,
-) -> Package | None:
-    name = entry.get("Package")
-    version = entry.get("Version")
-    if not name or not version:
-        return None
-    if not distribution.id or not component.id or not architecture.id:
-        return None
-
-    return Package(
-        name=name,
-        version=version,
-        section=entry.get("Section"),
-        priority=entry.get("Priority"),
-        size=entry.get("Size"),
-        installed_size=entry.get("Installed-Size"),
-        filename=entry.get("Filename"),
-        source=entry.get("Source"),
-        maintainer=entry.get("Maintainer"),
-        homepage=entry.get("Homepage"),
-        description=_clean_text(entry.get("Description")),
-        description_md5=entry.get("Description-md5"),
-        checksum_md5=entry.get("MD5sum"),
-        checksum_sha1=entry.get("SHA1"),
-        checksum_sha256=entry.get("SHA256"),
-        tags=entry.get("Tag"),
-        raw_control=entry,
-        repository_id=distribution.repository_id,
-        distribution_id=distribution.id,
-        component_id=component.id,
-        architecture_id=architecture.id,
-        last_fetched_at=datetime.datetime.now(tz=datetime.UTC),
-    )
-
-
-async def _get_or_create_component(
-    session: AsyncSession,
-    distribution: Distribution,
-    component_name: str,
-) -> Component:
-    """Get or create a Component model and link it to the distribution/repository.
-    This assumes you're holding the session context manager when you call it.
-    """
-    result = await session.exec(
-        Component.select().where(
-            Component.repository_id == distribution.repository_id,
-            Component.name == component_name,
-        )
-    )
-    component = result.first()
-
-    if component:
-        if distribution not in component.distributions:
-            component.distributions.append(distribution)
-    else:
-        component = Component(
-            name=component_name, repository_id=distribution.repository_id, distributions=[distribution]
-        )
-
-    session.add(component)
-    await session.flush()
-    return component
-
-
-async def _get_or_create_architecture(
-    session: AsyncSession,
-    distribution: Distribution,
-    architecture_name: str,
-) -> Architecture:
-    """Get or create an Architecture model and link it to the distribution/repository.
-    This assumes you're holding the session context manager when you call it.
-    """
-    result = await session.exec(
-        Architecture.select().where(
-            Architecture.repository_id == distribution.repository_id,
-            Architecture.name == architecture_name,
-        )
-    )
-    architecture = result.one_or_none()
-
-    if architecture:
-        if distribution not in architecture.distributions:
-            architecture.distributions.append(distribution)
-    else:
-        architecture = Architecture(
-            name=architecture_name,
-            repository_id=distribution.repository_id,
-            distributions=[distribution],
-        )
-        session.add(architecture)
-
-    await session.flush([architecture, distribution])
-    return architecture
-
-
-async def _replace_packages_for_target(
-    distribution_id: int,
-    component_name: str,
-    architecture_name: str,
-    entries: AsyncIterator[dict],
-):
-    async with rx.asession() as session:
-        session.autoflush = False
-        distribution = await session.get_one(Distribution, distribution_id)
-        component = await _get_or_create_component(session, distribution, component_name)
-        architecture = await _get_or_create_architecture(session, distribution, architecture_name)
-        await session.flush()
-
-        query = Package.select().where(
-            Package.distribution == distribution,
-            Package.component == component,
-            Package.architecture == architecture,
-        )
-        result = await session.exec(query)
-        packages: dict[tuple[str, str], Package] = {(pkg.name, pkg.version): pkg for pkg in result.all()}
-
-        idx = 0
-        last_update = time.monotonic()
-        async for entry in entries:
-            idx += 1
-            if (name := entry.get("Package")) is None or (version := entry.get("Version")) is None:
-                continue
-
-            if package := packages.get((name, version)):
-                package.last_fetched_at = datetime.datetime.now(tz=datetime.UTC)
-            else:
-                package = _build_package_model(entry, distribution, component, architecture)
-
-            if package:
-                session.add(package)
-
-            if time.monotonic() > last_update + 1:
-                await session.flush()
-                yield idx
-                last_update = time.monotonic()
-        else:
-            await session.flush()
-
-        distribution.last_fetched_at = datetime.datetime.now(tz=datetime.UTC)
-        await session.commit()
-        yield idx
 
 
 class AppState(rx.State):
@@ -202,22 +34,6 @@ class AppState(rx.State):
     fetch_repo_id: int = -1
     fetch_progress: int = 100
     fetch_message: str = ""
-
-    is_fetching_packages: bool = False
-    package_fetch_distribution_id: int = -1
-    package_fetch_progress: int = 100
-    package_fetch_message: str = ""
-
-    @rx.event
-    def repo_distribution_count(self, repo_id: int) -> int:
-        """Get the number of distributions for the current repository."""
-        with rx.session() as session:
-            count = session.exec(
-                select(func.count()).select_from(Distribution).where(Distribution.repository_id == repo_id)
-            ).one()
-            if count is not None:
-                return count
-        return 0
 
     @rx.event
     def load_repositories(self, toast: bool = False):
@@ -452,7 +268,7 @@ class AppState(rx.State):
                         raw=local_path.read_text(encoding="utf-8"),
                         architecture_names=parsed_data.get("Architectures", "").split(),
                         component_names=parsed_data.get("Components", "").split(),
-                        date=parsed_data.get("Date"),
+                        date=parsed_data.get("Date", UNIX_EPOCH_START),
                         description=parsed_data.get("Description"),
                         origin=parsed_data.get("Origin", ""),
                         suite=parsed_data.get("Suite", dist_name),
@@ -474,149 +290,7 @@ class AppState(rx.State):
             logger.exception("Error saving distributions to database:", stacklevel=2)
             return rx.toast.error(f"Error saving distributions to database: {e}")
 
-    @long_running_task
-    @rx.event(background=True)
-    async def fetch_distribution_packages(self, distribution_id: int | None):
-        """Download and persist Packages indexes for a distribution."""
-        if distribution_id is None:
-            logger.error("No distribution ID provided.")
-            yield rx.toast.error("No distribution ID provided.")
-            return
-
-        async with rx.asession() as session:
-            distribution = await session.get_one(Distribution, distribution_id)
-            repository = distribution.repository
-            if not repository:
-                yield rx.toast.error(
-                    f"Distribution #{distribution_id} has no associated repository.", duration=10000
-                )
-                return
-            repo_url = repository.url
-            name = distribution.name
-            codename = distribution.codename or name
-            component_names = distribution.component_names or []
-            architecture_names = distribution.architecture_names or []
-
-        if not component_names or not architecture_names:
-            logger.warning("Distribution missing components or architectures.")
-            yield rx.toast.warning("Distribution metadata missing components/architectures.")
-            return
-
-        async with self:
-            targets = [(comp, arch) for comp in component_names for arch in architecture_names]
-            total_targets = len(targets)
-            self.package_fetch_distribution_id = distribution_id
-            self.package_fetch_progress = 0
-            self.package_fetch_message = f"Preparing package sync for {name}"
-            self.is_fetching_packages = True
-        await asyncio.sleep(0)
-
-        total_packages = 0
-        processed = 0
-        try:
-            for comp_name, arch_name in targets:
-                name_tag = f"{name} target {processed + 1}/{total_targets} ({comp_name}/{arch_name})"
-                async with self:
-                    self.package_fetch_message = f"{name_tag}: downloading Packages index..."
-                    await asyncio.sleep(0)
-
-                download_result = await download_packages_index(repo_url, name, comp_name, arch_name)
-                if not download_result:
-                    logger.info(f"No Packages file for {comp_name}/{arch_name}")
-                    processed += 1
-                    async with self:
-                        self.package_fetch_progress = floor((processed / total_targets) * 100)
-                    await asyncio.sleep(0)
-                    continue
-
-                _, local_path = download_result
-                new_count = 0
-                try:
-                    async for count in _replace_packages_for_target(
-                        distribution_id,
-                        comp_name,
-                        arch_name,
-                        iter_packages_entries_async(local_path),
-                    ):
-                        async with self:
-                            self.package_fetch_message = f"{name_tag}: imported {count} packages..."
-                        new_count = count
-                        await asyncio.sleep(0)
-                    total_packages += new_count
-                except Exception as write_error:  # pragma: no cover - defensive logging
-                    logger.exception("Failed to save packages for %s/%s", comp_name, arch_name)
-                    async with self:
-                        self.package_fetch_message = f"Error saving {name_tag}: {write_error}"
-                    yield rx.toast.error(f"Error saving packages for {name_tag}: {write_error}")
-                    continue
-                finally:
-                    processed += 1
-                    async with self:
-                        self.package_fetch_progress = floor((processed / total_targets) * 100)
-                        self.package_fetch_message = f"{name_tag}: imported {new_count} new packages"
-                    await asyncio.sleep(0)
-
-            async with self:
-                self.package_fetch_progress = 100
-                self.package_fetch_message = f"Package sync complete ({total_packages} packages)"
-            yield rx.toast.success(
-                f"Fetched {total_packages} packages for {codename} across {processed} component/arch pairs"
-            )
-
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.exception("Error fetching packages for distribution %s", distribution_id)
-            yield rx.toast.error(f"Error fetching packages: {exc}")
-        finally:
-            async with self:
-                self.is_fetching_packages = False
-                self.package_fetch_distribution_id = -1
-                self.package_fetch_progress = 100
-                self.package_fetch_message = ""
-            await asyncio.sleep(0)
-
-    @rx.var
-    def distributions(self) -> list[Distribution]:
-        """Get the distributions for the current repository."""
-        if self.current_repo is None:
-            return []
-        with rx.session() as session:
-            repo = session.get(
-                Repository,
-                self.current_repo.id,
-                options=[selectinload(Repository.distributions)],  # type: ignore
-            )
-            if not repo:
-                return []
-            dists = repo.distributions
-            return sorted(dists, key=lambda d: d.date_timestamp, reverse=True)
-
-    @rx.var
-    def current_repo_id(self) -> int:
-        """Get the current repository name."""
-        return self.current_repo.id if self.current_repo and self.current_repo.id else -1
-
-    @rx.var
-    def current_repo_name(self) -> str:
-        """Get the current repository name."""
-        return self.current_repo.name if self.current_repo else "Unknown"
-
     @rx.var
     def repository_names(self) -> list[str]:
         """Get the list of repository names."""
         return [repo.name for repo in self.repositories]
-
-    @rx.var
-    def current_distro_id(self) -> int:
-        """Get the current distribution ID."""
-        return self.current_distro.id if self.current_distro and self.current_distro.id else -1
-
-    @rx.var
-    def distribution_names(self) -> list[str]:
-        """Get the list of distribution names for the current repository."""
-        dists = self.distributions
-        return [dist.name for dist in dists]
-
-    @rx.var
-    def current_distro_name(self) -> str:
-        """Get the current distribution name."""
-        return self.current_distro.name if self.current_distro else "Unknown"

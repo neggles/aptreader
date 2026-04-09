@@ -4,10 +4,8 @@ import logging
 
 import reflex as rx
 import sqlmodel as sm
-from sqlalchemy.orm import selectinload
 
-from aptreader.models.packages import Architecture, Component, Package
-from aptreader.models.repository import Distribution
+from aptreader.models import Architecture, Component, Distribution, Package
 
 logger = logging.getLogger(__name__)
 
@@ -102,35 +100,13 @@ class PackagesState(rx.State):
     def component_options(self) -> list[str]:
         if self.current_distro is None:
             return []
-        with rx.session() as session:
-            dist = session.get(
-                Distribution,
-                self.current_distro.id,
-                options=[selectinload(Distribution.components)],  # type: ignore
-                populate_existing=True,
-            )
-            if not dist:
-                return []
-            dist.components.sort(key=lambda c: c.name.lower())
-            results = [c.name for c in dist.components]
-            return results
+        return sorted(self.current_distro.component_names)
 
     @rx.var
     def architecture_options(self) -> list[str]:
         if self.current_distro is None:
             return []
-        with rx.session() as session:
-            dist = session.get(
-                Distribution,
-                self.current_distro.id,
-                options=[selectinload(Distribution.architectures)],  # type: ignore
-                populate_existing=True,
-            )
-            if not dist:
-                return []
-            dist.architectures.sort(key=lambda a: a.name.lower())
-            results = [a.name for a in dist.architectures]
-            return results
+        return sorted(self.current_distro.architecture_names)
 
     @rx.var
     def component_filter_options(self) -> list[str]:

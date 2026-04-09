@@ -16,11 +16,7 @@ def show_package(pkg: Package) -> rx.Component:
         rx.table.cell(
             rx.vstack(
                 rx.code(pkg.filename, size="1", max_width="42ch"),
-                rx.cond(
-                    pkg.homepage,
-                    rx.link("Homepage", href=pkg.homepage, is_external=True, size="1"),
-                    rx.fragment(),
-                ),
+                rx.fragment(),
                 spacing="1",
                 align="start",
             )

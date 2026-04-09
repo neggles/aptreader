@@ -1,116 +1,112 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import reflex as rx
-import sqlmodel as sm
 from dateutil.parser import parse as parse_date
-from pydantic import computed_field
-from sqlmodel import JSON, Field, Relationship, UniqueConstraint, func, select
+from pydantic import AwareDatetime, ByteSize, computed_field, field_validator
+from sqlalchemy.dialects import postgresql as pg
+from sqlalchemy.orm import Mapped
+from sqlmodel import (
+    BigInteger,
+    Column,
+    DateTime,
+    Field,
+    Index,
+    Relationship,
+    UniqueConstraint,
+    func,
+    select,
+)
 
+from aptreader.constants import UNIX_EPOCH_START
 from aptreader.models.links import (
     DistributionArchitectureLink,
     DistributionComponentLink,
     DistributionPackageLink,
 )
-from aptreader.models.packages import Architecture, Component, Package
+from aptreader.utils import stringify_size
 
 logger = logging.getLogger(__name__)
-
-
-# fmt: off
-ORDERED_COMPONENTS = [
-    "main", "contrib", "non-free", "non-free-firmware",
-    "restricted", "universe", "multiverse",
-]
-N_ORDERED_COMPONENTS = len(ORDERED_COMPONENTS)
-
-ORDERED_ARCHITECTURES = [
-    "i386", "amd64", "amd64v3",
-    "armel", "armhf", "arm64", "aarch64",
-    "riscv32", "riscv64",
-    "mipsel", "mips64el",
-    "la64", "loongarch64",
-    "powerpc", "ppc32", "ppc64el",
-    "s390", "s390x",
-]
-N_ORDERED_ARCHITECTURES = len(ORDERED_ARCHITECTURES)
-# fmt: on
 
 
 class Distribution(rx.Model, table=True):
     __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_distribution_repository_name"),)
 
     name: str = Field(index=True)
-    date: str | None = Field(default=None)
-    description: str | None = Field(default=None)
-    origin: str | None = Field(default=None)
-    suite: str | None = Field(default=None)
-    version: str | None = Field(default=None)
-    codename: str | None = Field(default=None)
-    architecture_names: list[str] = Field(sa_type=JSON, default_factory=list)
-    component_names: list[str] = Field(sa_type=JSON, default_factory=list)
-    raw: str | None = Field(default=None, repr=False)
+    date: AwareDatetime = Field(
+        default=UNIX_EPOCH_START,
+        sa_column=Column(pg.TIMESTAMP(timezone=True), index=True),
+    )
+    description: str | None = Field(None)
+    origin: str | None = Field(None)
+    suite: str | None = Field(None)
+    version: str | None = Field(None)
+    codename: str | None = Field(None)
+    architecture_names: list[str] = Field(sa_type=pg.JSONB, default_factory=list)
+    component_names: list[str] = Field(sa_type=pg.JSONB, default_factory=list)
+    raw: str | None = Field(None, repr=False, schema_extra=dict(deferred=True))
 
     repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
-    repository: "Repository" = Relationship(
+    repository: Mapped["Repository"] = Relationship(
         back_populates="distributions",
-        sa_relationship_kwargs={"lazy": "selectin"},
-    )
-    components: list[Component] = Relationship(
-        back_populates="distributions",
-        link_model=DistributionComponentLink,
-        sa_relationship_kwargs={"lazy": "selectin"},
-    )
-    architectures: list[Architecture] = Relationship(
-        back_populates="distributions",
-        link_model=DistributionArchitectureLink,
         sa_relationship_kwargs={"lazy": "selectin"},
     )
 
-    packages: list[Package] = Relationship(
+    components: Mapped[list["Component"]] = Relationship(
+        back_populates="distributions",
+        link_model=DistributionComponentLink,
+        passive_deletes=True,
+    )
+
+    architectures: Mapped[list["Architecture"]] = Relationship(
+        back_populates="distributions",
+        link_model=DistributionArchitectureLink,
+        passive_deletes=True,
+    )
+
+    packages: Mapped[list["Package"]] = Relationship(
         back_populates="distribution",
         link_model=DistributionPackageLink,
-        sa_relationship_kwargs={"lazy": "selectin"},
+        passive_deletes=True,
     )
 
     last_fetched_at: datetime | None = Field(
         default=None,
-        sa_column=sm.Column(
+        sa_column=Column(
             "last_fetched_at",
-            sm.DateTime(timezone=True),
-            server_default=sm.func.now(),
-            onupdate=sm.func.now(),
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
             nullable=False,
         ),
     )
 
-    @computed_field
-    @property
-    def date_timestamp(self) -> float:
-        """Get the parsed date as a datetime object."""
-        date = self.date or datetime.fromtimestamp(0).isoformat()
+    @field_validator("architecture_names", "component_names", mode="after")
+    def _sort_list(cls, v: list[str] | None) -> list[str]:
+        if v is None:
+            return []
+        return sorted(v)
 
+    @field_validator("date", mode="before")
+    def _parse_date_field(cls, v: str | datetime | None) -> datetime:
+        """Validate and parse the date field."""
+        if isinstance(v, datetime):
+            return v
+        if v is None:
+            return UNIX_EPOCH_START
         try:
-            date = parse_date(date)
-            return date.timestamp()
+            return parse_date(v).astimezone(UTC)
         except (ValueError, TypeError):
-            logger.exception(f"Failed to parse date '{date}'")
-            return 0
+            logger.exception(f"Failed to parse date '{v}'")
+            return UNIX_EPOCH_START
 
-    @computed_field
+    @computed_field(repr=False)
     @property
     def format_date(self) -> str | None:
         """Get the parsed date as a pretty string."""
-        if not self.date:
-            return None
-        try:
-            date_val = parse_date(self.date)
-            return date_val.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            logger.exception(f"Failed to parse date '{self.date}'")
-            return None
+        return self.date.strftime("%Y-%m-%d %H:%M:%S %Z")
 
-    @computed_field
+    @computed_field(repr=False)
     @property
     def format_last_fetched_at(self) -> str | None:
         """Get the parsed date as a pretty string."""
@@ -122,45 +118,141 @@ class Distribution(rx.Model, table=True):
             logger.debug(f"Failed to parse date '{self.last_fetched_at}': {e}")
             return None
 
-    @computed_field
-    @property
-    def format_components(self) -> list[str]:
-        """Get the components sorted in a preferred order."""
-        not_in_ordered = sorted([c for c in self.component_names if c not in ORDERED_COMPONENTS])
-
-        def sort_fn(c):
-            if c in ORDERED_COMPONENTS:
-                return ORDERED_COMPONENTS.index(c)
-            return N_ORDERED_COMPONENTS + not_in_ordered.index(c)
-
-        return sorted(self.component_names, key=sort_fn)
-
-    @computed_field
-    @property
-    def format_architectures(self) -> list[str]:
-        """Get the architectures sorted in a preferred order."""
-
-        not_in_ordered = sorted([c for c in self.architecture_names if c not in ORDERED_ARCHITECTURES])
-
-        def sort_fn(c):
-            if c in ORDERED_ARCHITECTURES:
-                return ORDERED_ARCHITECTURES.index(c)
-            return N_ORDERED_ARCHITECTURES + not_in_ordered.index(c)
-
-        return sorted(self.architecture_names, key=sort_fn)
-
-    @computed_field
+    @computed_field(repr=False)
     @property
     def package_count(self) -> int:
         """Get the number of packages for this distribution."""
+
         with rx.session() as session:
-            q = (
+            stmt = (
                 select(func.count())
                 .select_from(Package)
                 .where(Package.repository_id == self.repository_id, Package.distribution_id == self.id)
             )
-            count = session.scalar(q)
-            return count if count is not None else 0
+            count = session.exec(stmt).one_or_none() or 0
+
+            return count
+
+
+class Component(rx.Model, table=True):
+    """APT component (e.g., main, universe) tied to a distribution."""
+
+    __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_component_distribution_name"),)
+
+    name: str = Field(index=True)
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
+    repository: "Repository" = Relationship(
+        back_populates="components",
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    distributions: list["Distribution"] = Relationship(
+        back_populates="components",
+        link_model=DistributionComponentLink,
+    )
+
+
+class Architecture(rx.Model, table=True):
+    """APT architecture (e.g., amd64) available for a distribution."""
+
+    __table_args__ = (UniqueConstraint("repository_id", "name", name="uq_architecture_distribution_name"),)
+
+    name: str = Field(index=True)
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
+    repository: "Repository" = Relationship(
+        back_populates="architectures",
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    distributions: list["Distribution"] = Relationship(
+        back_populates="architectures",
+        link_model=DistributionArchitectureLink,
+    )
+
+
+class Package(rx.Model, table=True):
+    """Stored metadata for a single package entry from Packages.gz."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "distribution_id",
+            "component_id",
+            "architecture_id",
+            "name",
+            "version",
+            name="uq_package_distribution_component_architecture_name_version",
+        ),
+        Index(
+            "ix_package_name_version",
+            "name",
+            "version",
+        ),
+    )
+
+    name: str = Field(index=True)
+    version: str = Field()
+    section: str | None = Field(None)
+    priority: str | None = Field(None)
+    size: ByteSize | None = Field(None, sa_type=BigInteger)
+    installed_size: ByteSize | None = Field(None, sa_type=BigInteger)
+    filename: str | None = Field(None)
+    source: str | None = Field(None)
+    maintainer: str | None = Field(None)
+    homepage: str | None = Field(None)
+    description: str | None = Field(None)
+    description_md5: str | None = Field(None)
+    checksum_md5: str | None = Field(None)
+    checksum_sha1: str | None = Field(None)
+    checksum_sha256: str | None = Field(None)
+    tags: str | None = Field(None)
+    raw_control: dict | None = Field(None, sa_type=pg.JSONB, repr=False)
+
+    repository_id: int = Field(foreign_key="repository.id", ondelete="CASCADE")
+    repository: Mapped["Repository"] = Relationship(
+        back_populates="packages",
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+    distribution_id: int = Field(foreign_key="distribution.id", ondelete="CASCADE")
+    distribution: Mapped["Distribution"] = Relationship(
+        back_populates="packages",
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    component_id: int = Field(foreign_key="component.id", ondelete="CASCADE")
+    component: Mapped["Component"] = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+    architecture_id: int = Field(foreign_key="architecture.id", ondelete="CASCADE")
+    architecture: Mapped["Architecture"] = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
+
+    last_fetched_at: AwareDatetime | None = Field(
+        default=None,
+        sa_column=Column(
+            "last_fetched_at",
+            pg.TIMESTAMP(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+    @computed_field
+    @property
+    def size_str(self) -> str:
+        """Package size formatted as a human-readable string."""
+        if self.size is None:
+            return "-"
+        return stringify_size(self.size)
+
+    @computed_field
+    @property
+    def installed_size_str(self) -> str:
+        """Package size formatted as a human-readable string."""
+        if self.installed_size is None:
+            return "-"
+        return stringify_size(self.installed_size)
 
 
 class Repository(rx.Model, table=True):
@@ -171,43 +263,42 @@ class Repository(rx.Model, table=True):
 
     distributions: list["Distribution"] = Relationship(
         back_populates="repository",
-        cascade_delete=True,
     )
     components: list["Component"] = Relationship(
         back_populates="repository",
-        cascade_delete=True,
     )
     architectures: list["Architecture"] = Relationship(
         back_populates="repository",
-        cascade_delete=True,
     )
-    packages: list["Package"] = Relationship(back_populates="repository")
+    packages: list["Package"] = Relationship(
+        back_populates="repository",
+    )
 
-    last_fetched_at: datetime | None = Field(
+    last_fetched_at: AwareDatetime | None = Field(
         default=None,
-        sa_column=sm.Column(
+        sa_column=Column(
             "last_fetched_at",
-            sm.DateTime(timezone=True),
-            server_default=sm.func.now(),
-            onupdate=sm.func.now(),
+            pg.TIMESTAMP(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
             nullable=False,
         ),
     )
 
     @computed_field
     @property
-    def repo_distribution_count(self) -> int:
+    def distribution_count(self) -> int:
         """Get the number of distributions for this repository."""
         with rx.session() as session:
-            q = select(func.count()).select_from(Distribution).where(Distribution.repository_id == self.id)
-            count = session.scalar(q)
-            return count or 0
+            stmt = select(func.count()).select_from(Package).where(Package.repository_id == self.id)
+            count = session.exec(stmt).one_or_none() or 0
+            return count
 
     @computed_field
     @property
     def package_count(self) -> int:
         """Get the number of packages for this repository."""
         with rx.session() as session:
-            q = select(func.count()).select_from(Package).where(Package.repository_id == self.id)
-            count = session.scalar(q)
-            return count if count is not None else 0
+            stmt = select(func.count()).select_from(Distribution).where(Distribution.repository_id == self.id)
+            count = session.exec(stmt).one_or_none() or 0
+            return count

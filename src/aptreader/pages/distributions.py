@@ -3,7 +3,7 @@
 import reflex as rx
 
 from aptreader.backend.backend import AppState
-from aptreader.states.repo_select import RepoSelectState
+from aptreader.states.distributions import DistributionsState
 from aptreader.templates import template
 from aptreader.views.distributions import distributions_table
 
@@ -11,7 +11,11 @@ from aptreader.views.distributions import distributions_table
 @template(
     route="/distributions/[[...splat]]",
     title="Distributions",
-    on_load=[AppState.load_repositories, RepoSelectState.load_from_route],
+    on_load=[
+        AppState.load_repositories,
+        DistributionsState.load_from_route,
+        DistributionsState.load_distributions,
+    ],
 )
 def distributions() -> rx.Component:
     """Distributions page component."""

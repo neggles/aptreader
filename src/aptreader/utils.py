@@ -1,7 +1,7 @@
 import asyncio
-import datetime
 import inspect
 import logging
+from datetime import UTC, datetime, timezone
 from functools import wraps
 
 from dateutil.parser import parse as parse_date
@@ -9,18 +9,26 @@ from dateutil.parser import parse as parse_date
 logger = logging.getLogger(__name__)
 
 
-def try_parse_date(date_str: str | None) -> datetime.datetime | None:
-    """Try to parse a date string into a timestamp.
+def try_parse_date(date_str: str | None, tz: timezone | None = None) -> datetime | None:
+    """Try to parse a date string into a datetime.
 
     Args:
         date_str: The date string to parse (e.g., from HTTP Last-Modified header)
 
     Returns:
-        The parsed timestamp, or None if parsing failed or date_str is None
+        The parsed datetime, or None if parsing failed or date_str is None
     """
 
     try:
-        return parse_date(date_str) if date_str else None
+        if date_str is None:
+            return None
+        dt = parse_date(date_str)
+        if tz:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tz)
+            else:
+                dt = dt.astimezone(tz)
+        return dt
     except Exception as e:
         logger.debug(f"Failed to parse date '{date_str}': {e}")
         return None
@@ -104,3 +112,12 @@ def stringify_size(num: int | float, decimal: bool = False, separator: str = "")
         num /= divisor
 
     return f"{num:0.1f}{separator}{final_unit}"
+
+
+def clean_text(value: str | None) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else value or None
+
+
+def utcnow():
+    """Get the current UTC time."""
+    return datetime.now(tz=UTC)

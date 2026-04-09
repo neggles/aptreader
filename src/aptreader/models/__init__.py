@@ -1,8 +1,11 @@
 """Expose ORM models."""
 
-from . import links  # noqa: F401
-from .packages import Architecture, Component, Package
-from .repository import Distribution, Repository
+from .links import (
+    DistributionArchitectureLink,
+    DistributionComponentLink,
+    DistributionPackageLink,
+)
+from .repository import Architecture, Component, Distribution, Package, Repository
 
 __all__ = [
     "Architecture",
@@ -10,4 +13,7 @@ __all__ = [
     "Distribution",
     "Package",
     "Repository",
+    "DistributionArchitectureLink",
+    "DistributionComponentLink",
+    "DistributionPackageLink",
 ]

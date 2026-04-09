@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from os import getenv
 from pathlib import Path
 
@@ -32,6 +33,8 @@ else:
         ASYNC_DB_URL = DB_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
     else:
         ASYNC_DB_URL = None
+
+UNIX_EPOCH_START = datetime.fromtimestamp(0, tz=UTC)
 
 
 # Page routes to always put in the same order at the start/top of the nav/sidebars

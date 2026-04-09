@@ -21,7 +21,8 @@ config = rx.Config(
     backend_port=3001,
     plugins=[
         rx.plugins.TailwindV4Plugin(tailwind_config),
-        rx.plugins.SitemapPlugin(),
     ],
+    disable_plugins=["reflex.plugins.sitemap.SitemapPlugin"],
+    enable_pyleak_monitoring=True,
     cors_allowed_origins=["*"],
 )

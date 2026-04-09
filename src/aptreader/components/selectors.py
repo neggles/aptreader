@@ -2,14 +2,14 @@ import logging
 
 import reflex as rx
 
-from aptreader.states import RepoSelectState
-from aptreader.states.distro_select import DistroSelectState
+from aptreader.states import DistributionsState, DistroSelectState, RepoSelectState
 
 logger = logging.getLogger(__name__)
 
 
-def repo_select() -> rx.Component:
+def repo_select(button: rx.Component | None = None) -> rx.Component:
     # Create the select component
+
     return rx.card(
         rx.hstack(
             rx.text("Repository"),
@@ -20,6 +20,7 @@ def repo_select() -> rx.Component:
                 min_width="240px",
                 width="240px",
             ),
+            rx.cond(button, button, None),
             spacing="3",
             align="center",
         ),
@@ -35,7 +36,7 @@ def distro_select() -> rx.Component:
         rx.hstack(
             rx.text("Distribution"),
             rx.select(
-                DistroSelectState.available_distro_names,
+                DistributionsState.distribution_names,
                 value=DistroSelectState.current_distro_name,
                 on_change=DistroSelectState.select_distro_name,
                 min_width="240px",

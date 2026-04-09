@@ -17,6 +17,11 @@ class RepoSelectState(rx.State):
     def current_repo_name(self) -> str:
         return self.current_repo.name if self.current_repo else "None"
 
+    @rx.var(cache=False)
+    def current_repo_id(self) -> int:
+        """Get the current repository name."""
+        return self.current_repo.id if self.current_repo else -1  # type: ignore
+
     @rx.var
     async def available_repo_names(self) -> list[str]:
         app_state = await self.get_state(AppState)

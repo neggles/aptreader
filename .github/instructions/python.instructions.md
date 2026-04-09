@@ -7,12 +7,15 @@ applyTo: "**/*.py"
 
 ## Python Instructions
 
--   Check pyproject.toml for the minimum supported Python version.
+-   Check pyproject.toml and/or .python-version for the minimum supported Python version.
+-   If no specific version is mentioned, assume Python 3.11 or higher.
 -   Write clear and concise comments for each function.
--   Ensure functions have descriptive names and include type hints.
--   Provide docstrings following PEP 257 conventions.
--   Do _not_ use the `typing` module for stdlib type annotations when unnecessary (e.g., use `list[str]` not `List[str]`, `dict[str, int]` not `Dict[str, int]`).
--   Break down complex functions into smaller, more manageable functions.
+-   Ensure functions have descriptive names, but avoid being overly verbose, e.g. `calculate_area` is better than `calculate_area_of_circle_from_radius`.
+-   Use type hints for all function parameters and return types, but avoid overusing them in cases where the types are obvious or do not add clarity.
+-   Provide docstrings following **PEP 257** conventions.
+-   **Do not use the `typing` module for stdlib type annotations when unnecessary** (e.g., use `list[str]` not `List[str]`, `dict[str, int]` not `Dict[str, int]`).
+-   Break down complex functions into smaller, more manageable functions when appropriate. **Do not create helper functions that are only used once** unless they significantly improve readability.
+-   Do not use `from __future__ import annotations` if the minimum supported Python version is 3.10 or higher, use explicit string forward references instead.
 
 ## General Instructions
 

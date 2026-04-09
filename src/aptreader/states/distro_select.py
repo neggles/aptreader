@@ -17,11 +17,6 @@ class DistroSelectState(rx.State):
     def current_distro_name(self) -> str:
         return self.current_distro.name if self.current_distro else "None"
 
-    @rx.var
-    async def available_distro_names(self) -> list[str]:
-        app_state = await self.get_state(AppState)
-        return app_state.distribution_names
-
     @rx.event
     async def load_from_route(self):
         """Load the current repository on component load."""
