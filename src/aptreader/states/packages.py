@@ -39,7 +39,7 @@ class PackagesState(rx.State):
             if self.component_filter not in {"", "all"}:
                 component = session.exec(
                     Component.select().where(
-                        Component.repository_id == Package.repository_id,
+                        Component.repository_id == self.current_distro.repository_id,
                         Component.name == self.component_filter,
                     )
                 ).one_or_none()
@@ -51,7 +51,7 @@ class PackagesState(rx.State):
             if self.architecture_filter not in {"", "all"}:
                 architecture = session.exec(
                     Architecture.select().where(
-                        Architecture.repository_id == Package.repository_id,
+                        Architecture.repository_id == self.current_distro.repository_id,
                         Architecture.name == self.architecture_filter,
                     )
                 ).one_or_none()
